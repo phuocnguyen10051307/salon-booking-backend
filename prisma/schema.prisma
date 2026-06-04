@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma/client.js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model booking_cart_items {
+  cart_item_id  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cart_id       String?        @db.Uuid
+  service_id    String?        @db.Uuid
+  quantity      Int?           @default(1)
+  created_at    DateTime?      @default(now()) @db.Timestamp(6)
+  booking_carts booking_carts? @relation(fields: [cart_id], references: [cart_id], onDelete: Cascade, onUpdate: NoAction)
+  services      services?      @relation(fields: [service_id], references: [service_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model booking_carts {
+  cart_id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String?              @db.Uuid
+  created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  booking_cart_items booking_cart_items[]
+  users              users?               @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model booking_items {
+  booking_item_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id      String?   @db.Uuid
+  service_id      String?   @db.Uuid
+  quantity        Int?      @default(1)
+  price           Decimal   @db.Decimal(12, 2)
+  bookings        bookings? @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade, onUpdate: NoAction)
+  services        services? @relation(fields: [service_id], references: [service_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model booking_reschedules {
+  reschedule_id    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id       String?   @db.Uuid
+  old_booking_date DateTime? @db.Date
+  old_booking_time DateTime? @db.Time(6)
+  new_booking_date DateTime? @db.Date
+  new_booking_time DateTime? @db.Time(6)
+  reason           String?
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  bookings         bookings? @relation(fields: [booking_id], references: [booking_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model bookings {
+  booking_id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_code        String                @unique @db.VarChar(20)
+  user_id             String?               @db.Uuid
+  stylist_id          String?               @db.Uuid
+  booking_date        DateTime              @db.Date
+  booking_time        DateTime              @db.Time(6)
+  note                String?
+  total_amount        Decimal?              @db.Decimal(12, 2)
+  status              booking_status?       @default(PENDING)
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at          DateTime?             @default(now()) @db.Timestamp(6)
+  booking_items       booking_items[]
+  booking_reschedules booking_reschedules[]
+  stylists            stylists?             @relation(fields: [stylist_id], references: [stylist_id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?                @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model categories {
+  category_id   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category_name String     @db.VarChar(100)
+  description   String?
+  created_at    DateTime?  @default(now()) @db.Timestamp(6)
+  services      services[]
+}
+
+model chat_messages {
+  message_id      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String?   @db.Uuid
+  sender_type     String    @db.VarChar(20)
+  message_content String
+  sent_at         DateTime? @default(now()) @db.Timestamp(6)
+  users           users?    @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model notifications {
+  notification_id   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String?            @db.Uuid
+  title             String?            @db.VarChar(255)
+  content           String?
+  notification_type notification_type?
+  is_read           Boolean?           @default(false)
+  created_at        DateTime?          @default(now()) @db.Timestamp(6)
+  users             users?             @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model promotions {
+  promotion_id     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String?   @db.VarChar(255)
+  description      String?
+  discount_percent Int?
+  start_date       DateTime? @db.Date
+  end_date         DateTime? @db.Date
+  is_active        Boolean?  @default(true)
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model salon_locations {
+  location_id   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salon_name    String?   @db.VarChar(150)
+  address       String?
+  hotline       String?   @db.VarChar(20)
+  opening_hours String?   @db.VarChar(100)
+  latitude      Decimal?  @db.Decimal(10, 8)
+  longitude     Decimal?  @db.Decimal(11, 8)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model services {
+  service_id         String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category_id        String?              @db.Uuid
+  service_name       String               @db.VarChar(150)
+  price              Decimal              @db.Decimal(12, 2)
+  duration_minutes   Int
+  description        String?
+  image_url          String?
+  is_active          Boolean?             @default(true)
+  created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(6)
+  booking_cart_items booking_cart_items[]
+  booking_items      booking_items[]
+  categories         categories?          @relation(fields: [category_id], references: [category_id], onDelete: NoAction, onUpdate: NoAction)
+  stylist_services   stylist_services[]
+}
+
+model stylist_services {
+  stylist_id String   @db.Uuid
+  service_id String   @db.Uuid
+  services   services @relation(fields: [service_id], references: [service_id], onDelete: Cascade, onUpdate: NoAction)
+  stylists   stylists @relation(fields: [stylist_id], references: [stylist_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([stylist_id, service_id])
+}
+
+model stylists {
+  stylist_id       String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name        String             @db.VarChar(100)
+  phone            String?            @db.VarChar(20)
+  email            String?            @db.VarChar(100)
+  avatar_url       String?
+  experience_years Int?
+  bio              String?
+  is_active        Boolean?           @default(true)
+  created_at       DateTime?          @default(now()) @db.Timestamp(6)
+  bookings         bookings[]
+  stylist_services stylist_services[]
+}
+
+model users {
+  user_id       String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name     String          @db.VarChar(100)
+  email         String?         @unique @db.VarChar(100)
+  phone         String?         @unique @db.VarChar(20)
+  password_hash String
+  avatar_url    String?
+  is_active     Boolean?        @default(true)
+  created_at    DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?       @default(now()) @db.Timestamp(6)
+  booking_carts booking_carts[]
+  bookings      bookings[]
+  chat_messages chat_messages[]
+  notifications notifications[]
+  sessions      sessions[]
+}
+
+enum booking_status {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum notification_type {
+  BOOKING_CONFIRMED
+  BOOKING_COMPLETED
+  PROMOTION
+  NEW_SERVICE
+}
+
+enum user_role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+model sessions {
+  session_id    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String    @db.Uuid
+  refresh_token String    @unique
+  expires_at    DateTime
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+
+  users users? @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+}
