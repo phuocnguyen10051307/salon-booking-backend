@@ -10,6 +10,21 @@ import { JwtProvider } from '../providers/jwt.provider.js'
 import { pickUser } from '../utils/formatters.js'
 import ApiError from '../utils/ApiError.js'
 
+const mapUserResponse = (user) =>
+  pickUser({
+    _id: user.user_id,
+    phone: user.phone,
+    email: user.email,
+    displayName: user.full_name,
+    role: (user.role || 'CUSTOMER').toLowerCase(),
+    avatarUrl: user.avatar_url,
+    avatarId: user.avatar_id || null,
+    loyaltyPoints: user.loyalty_points || 0,
+    isActive: user.is_active,
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+  })
+
 const signup = async (userData) => {
   const { phone, password, full_name, email } = userData
   if (!phone || !password || !full_name) {
@@ -38,17 +53,7 @@ const signup = async (userData) => {
     },
   })
 
-  const mapped = {
-    _id: createdUser.user_id,
-    phone: createdUser.phone,
-    displayName: createdUser.full_name,
-    role: createdUser.role || 'CUSTOMER',
-    avatarUrl: createdUser.avatar_url,
-    avatarId: createdUser.avatar_id,
-    isActive: createdUser.is_active,
-  }
-
-  return pickUser(mapped)
+  return mapUserResponse(createdUser)
 }
 
 const signin = async (userData) => {
@@ -84,7 +89,7 @@ const signin = async (userData) => {
   const userInfo = {
     _id: user.user_id,
     phone: user.phone,
-    role: user.role || 'CUSTOMER',
+    role: (user.role || 'CUSTOMER').toLowerCase(),
   }
 
   const accessToken = await JwtProvider.generateToken(userInfo, env.JWT_ACCESS_SECRET, env.JWT_ACCESS_EXPIRATION)
@@ -103,21 +108,11 @@ const signin = async (userData) => {
     },
   })
 
-  const mapped = {
-    _id: user.user_id,
-    phone: user.phone,
-    displayName: user.full_name,
-    role: user.role || 'CUSTOMER',
-    avatarUrl: user.avatar_url,
-    avatarId: user.avatar_id,
-    isActive: user.is_active,
-  }
-
   return {
     accessToken,
     refreshToken,
     refreshTokenMaxAge,
-    user: pickUser(mapped),
+    user: mapUserResponse(user),
   }
 }
 
@@ -159,7 +154,7 @@ const refreshToken = async (token) => {
   const userInfo = {
     _id: user.user_id,
     phone: user.phone,
-    role: user.role || 'CUSTOMER',
+    role: (user.role || 'CUSTOMER').toLowerCase(),
   }
 
   const accessToken = await JwtProvider.generateToken(userInfo, env.JWT_ACCESS_SECRET, env.JWT_ACCESS_EXPIRATION)
@@ -172,4 +167,5 @@ export const authService = {
   signin,
   signout,
   refreshToken,
+  mapUserResponse,
 }

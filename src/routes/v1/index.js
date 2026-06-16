@@ -1,6 +1,7 @@
 import express from 'express'
 import { StatusCodes } from 'http-status-codes'
 import { authRoute } from './auth.route.js'
+import { salonRoute } from './salon.route.js'
 
 const Router = express.Router()
 
@@ -11,5 +12,8 @@ Router.get('/status', (req, res) => {
 
 /** Auth APIs */
 Router.use('/auth', authRoute)
+
+/** Salon APIs */
+Router.use('/', salonRoute)
 
 export const APIs_V1 = Router

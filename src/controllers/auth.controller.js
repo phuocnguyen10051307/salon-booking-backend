@@ -5,21 +5,27 @@ import { authService } from '../services/auth.service.js'
 
 const signup = asyncHandler(async (req, res) => {
   const createdUser = await authService.signup(req.body)
-  res.status(StatusCodes.CREATED).json(createdUser)
+  res.status(StatusCodes.CREATED).json({
+    success: true,
+    message: 'Đăng ký thành công',
+    data: { user: createdUser },
+  })
 })
 
 const signin = asyncHandler(async (req, res) => {
-  console.log('BE received signin body:', req.body)
   const { accessToken, refreshToken, refreshTokenMaxAge, user } = await authService.signin(req.body)
   res.cookie('refreshToken', refreshToken, {
     ...refreshTokenCookieOptions,
     maxAge: refreshTokenMaxAge,
   })
-  console.log('BE signin user:', user)
 
   res.status(StatusCodes.OK).json({
-    message: `User ${user.displayName} signed in successfully`,
-    accessToken,
+    success: true,
+    message: 'Đăng nhập thành công',
+    data: {
+      user,
+      accessToken,
+    },
   })
 })
 
@@ -29,17 +35,25 @@ const signout = asyncHandler(async (req, res) => {
   res.clearCookie('refreshToken', {
     ...refreshTokenCookieOptions,
   })
-  res.status(StatusCodes.OK).json({ message: 'Signed out successfully' })
+  res.status(StatusCodes.OK).json({ success: true, message: 'Đăng xuất thành công' })
 })
 
 const refreshToken = asyncHandler(async (req, res) => {
   const { accessToken } = await authService.refreshToken(req.cookies?.refreshToken)
 
-  res.status(StatusCodes.OK).json({ accessToken })
+  res.status(StatusCodes.OK).json({
+    success: true,
+    message: 'Làm mới token thành công',
+    data: { accessToken },
+  })
 })
 
 const me = asyncHandler(async (req, res) => {
-  res.status(StatusCodes.OK).json({ user: req.user })
+  res.status(StatusCodes.OK).json({
+    success: true,
+    message: 'Lấy thông tin người dùng thành công',
+    data: { user: req.user },
+  })
 })
 
 export const authController = {
