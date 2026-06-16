@@ -20,6 +20,7 @@
     { "name": "Stylists", "description": "Stylist APIs" },
     { "name": "Cart", "description": "Booking cart APIs" },
     { "name": "Bookings", "description": "Customer booking APIs" },
+    { "name": "Billing", "description": "Customer billing and payment APIs" },
     { "name": "Admin Bookings", "description": "Admin booking management APIs" },
     { "name": "Notifications", "description": "Notification APIs" },
     { "name": "Promotions", "description": "Promotion APIs" },
@@ -43,7 +44,32 @@
         "requestBody": { "$ref": "#/components/requestBodies/Signup" },
         "responses": {
           "201": { "$ref": "#/components/responses/UserOk" },
-          "400": { "$ref": "#/components/responses/BadRequest" }
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/auth/verify-signup-otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Verify signup OTP and activate account",
+        "requestBody": { "$ref": "#/components/requestBodies/VerifySignupOtp" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/UserOk" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/auth/resend-signup-otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Resend signup OTP",
+        "requestBody": { "$ref": "#/components/requestBodies/ResendSignupOtp" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/MessageOk" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },
@@ -346,6 +372,66 @@
         "responses": { "200": { "$ref": "#/components/responses/ReschedulesOk" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
       }
     },
+    "/v1/billing": {
+      "get": {
+        "tags": ["Billing"],
+        "summary": "List current user's billings",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/BillingsOk" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      },
+      "post": {
+        "tags": ["Billing"],
+        "summary": "Create billing from booking",
+        "description": "Creates an unpaid billing record for a booking owned by the current user. If a billing already exists for the booking, the existing billing is returned.",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/Billing" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/BillingOk" },
+          "201": { "$ref": "#/components/responses/BillingOk" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/billing/booking/{bookingId}": {
+      "get": {
+        "tags": ["Billing"],
+        "summary": "Get billing by booking ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/BookingId" }],
+        "responses": { "200": { "$ref": "#/components/responses/BillingOk" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/v1/billing/{id}": {
+      "get": {
+        "tags": ["Billing"],
+        "summary": "Get billing by ID",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "responses": { "200": { "$ref": "#/components/responses/BillingOk" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/v1/billing/{id}/pay": {
+      "patch": {
+        "tags": ["Billing"],
+        "summary": "Mark billing as paid",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "requestBody": { "$ref": "#/components/requestBodies/BillingPayment" },
+        "responses": { "200": { "$ref": "#/components/responses/BillingOk" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/v1/billing/{id}/status": {
+      "patch": {
+        "tags": ["Billing"],
+        "summary": "Update billing status",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "requestBody": { "$ref": "#/components/requestBodies/BillingStatus" },
+        "responses": { "200": { "$ref": "#/components/responses/BillingOk" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/v1/admin/bookings": {
       "get": {
         "tags": ["Admin Bookings"],
@@ -616,10 +702,13 @@
     "parameters": {
       "Id": { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
       "ItemId": { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-      "ServiceId": { "name": "serviceId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      "ServiceId": { "name": "serviceId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "BookingId": { "name": "bookingId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
     },
     "requestBodies": {
       "Signup": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignupRequest" } } } },
+      "VerifySignupOtp": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VerifySignupOtpRequest" } } } },
+      "ResendSignupOtp": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResendSignupOtpRequest" } } } },
       "Signin": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SigninRequest" } } } },
       "UserProfile": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserProfileRequest" } } } },
       "ChangePassword": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangePasswordRequest" } } } },
@@ -632,6 +721,9 @@
       "Booking": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingRequest" } } } },
       "Reschedule": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RescheduleRequest" } } } },
       "BookingStatus": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingStatusRequest" } } } },
+      "Billing": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BillingRequest" } } } },
+      "BillingPayment": { "required": false, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BillingPaymentRequest" } } } },
+      "BillingStatus": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BillingStatusRequest" } } } },
       "Notification": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationRequest" } } } },
       "Promotion": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PromotionRequest" } } } },
       "Location": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LocationRequest" } } } },
@@ -657,6 +749,8 @@
       "BookingOk": { "description": "Booking response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingResponse" } } } },
       "BookingsOk": { "description": "Bookings response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingsResponse" } } } },
       "ReschedulesOk": { "description": "Booking reschedules response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReschedulesResponse" } } } },
+      "BillingOk": { "description": "Billing response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BillingResponse" } } } },
+      "BillingsOk": { "description": "Billings response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BillingsResponse" } } } },
       "NotificationOk": { "description": "Notification response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationResponse" } } } },
       "NotificationsOk": { "description": "Notifications response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationsResponse" } } } },
       "PromotionOk": { "description": "Promotion response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PromotionResponse" } } } },
@@ -669,6 +763,7 @@
       "DashboardOk": { "description": "Dashboard response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DashboardResponse" } } } },
       "StatisticsOk": { "description": "Statistics response.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatisticsResponse" } } } },
       "BadRequest": { "description": "Bad request.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiMessageResponse" } } } },
+      "Conflict": { "description": "Conflict.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiMessageResponse" } } } },
       "Unauthorized": { "description": "Unauthorized.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiMessageResponse" } } } },
       "Forbidden": { "description": "Forbidden.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiMessageResponse" } } } },
       "NotFound": { "description": "Resource not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiMessageResponse" } } } }
@@ -696,7 +791,22 @@
           "email": { "type": "string", "format": "email", "example": "customer@example.com" },
           "password": { "type": "string", "format": "password" }
         },
-        "required": ["full_name", "phone", "password"]
+        "required": ["full_name", "phone", "email", "password"]
+      },
+      "VerifySignupOtpRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email", "example": "customer@example.com" },
+          "otp": { "type": "string", "pattern": "^\\d{6}$", "example": "123456" }
+        },
+        "required": ["email", "otp"]
+      },
+      "ResendSignupOtpRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email", "example": "customer@example.com" }
+        },
+        "required": ["email"]
       },
       "SigninRequest": {
         "type": "object",
@@ -753,13 +863,12 @@
           "category_name": { "type": "string" },
           "name": { "type": "string" },
           "description": { "type": "string" }
-        }
+        },
+        "required": ["category_name"]
       },
       "ServiceRequest": {
         "type": "object",
         "properties": {
-          "category_id": { "type": "string", "format": "uuid" },
-          "categoryId": { "type": "string", "format": "uuid" },
           "service_name": { "type": "string" },
           "name": { "type": "string" },
           "price": { "type": "number", "format": "decimal" },
@@ -770,7 +879,8 @@
           "imageUrl": { "type": "string" },
           "is_active": { "type": "boolean" },
           "isActive": { "type": "boolean" }
-        }
+        },
+        "required": ["service_name", "price", "duration_minutes"]
       },
       "StylistRequest": {
         "type": "object",
@@ -787,22 +897,25 @@
           "bio": { "type": "string" },
           "is_active": { "type": "boolean" },
           "isActive": { "type": "boolean" }
-        }
+        },
+        "required": ["full_name"]
       },
       "StylistServiceRequest": {
         "type": "object",
         "properties": {
-          "service_id": { "type": "string", "format": "uuid" },
-          "serviceId": { "type": "string", "format": "uuid" }
-        }
+          "service_id": { "type": "string", "format": "uuid", "description": "ID cua service da ton tai de gan cho stylist." },
+          "serviceId": { "type": "string", "format": "uuid", "description": "ID cua service da ton tai de gan cho stylist." }
+        },
+        "required": ["service_id"]
       },
       "CartItemRequest": {
         "type": "object",
         "properties": {
-          "service_id": { "type": "string", "format": "uuid" },
-          "serviceId": { "type": "string", "format": "uuid" },
+          "service_id": { "type": "string", "format": "uuid", "description": "ID cua service da ton tai can them vao gio." },
+          "serviceId": { "type": "string", "format": "uuid", "description": "ID cua service da ton tai can them vao gio." },
           "quantity": { "type": "integer", "minimum": 1, "default": 1 }
-        }
+        },
+        "required": ["service_id"]
       },
       "QuantityRequest": {
         "type": "object",
@@ -821,17 +934,14 @@
       "BookingRequest": {
         "type": "object",
         "properties": {
-          "booking_code": { "type": "string" },
-          "bookingCode": { "type": "string" },
-          "stylist_id": { "type": "string", "format": "uuid" },
-          "stylistId": { "type": "string", "format": "uuid" },
           "booking_date": { "type": "string", "format": "date", "example": "2026-06-16" },
           "bookingDate": { "type": "string", "format": "date" },
           "booking_time": { "type": "string", "example": "09:30" },
           "bookingTime": { "type": "string" },
           "note": { "type": "string" },
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/BookingItemRequest" } }
-        }
+        },
+        "required": ["booking_date", "booking_time"]
       },
       "RescheduleRequest": {
         "type": "object",
@@ -850,11 +960,35 @@
         },
         "required": ["status"]
       },
+      "BillingRequest": {
+        "type": "object",
+        "properties": {
+          "booking_id": { "type": "string", "format": "uuid", "description": "ID cua booking da ton tai de tao hoa don." },
+          "bookingId": { "type": "string", "format": "uuid", "description": "ID cua booking da ton tai de tao hoa don." },
+          "discount_amount": { "type": "number", "format": "decimal", "default": 0 },
+          "discountAmount": { "type": "number", "format": "decimal", "default": 0 },
+          "payment_method": { "$ref": "#/components/schemas/PaymentMethod" },
+          "paymentMethod": { "$ref": "#/components/schemas/PaymentMethod" }
+        },
+        "required": ["booking_id"]
+      },
+      "BillingPaymentRequest": {
+        "type": "object",
+        "properties": {
+          "payment_method": { "$ref": "#/components/schemas/PaymentMethod" },
+          "paymentMethod": { "$ref": "#/components/schemas/PaymentMethod" }
+        }
+      },
+      "BillingStatusRequest": {
+        "type": "object",
+        "properties": {
+          "status": { "$ref": "#/components/schemas/BillingStatus" }
+        },
+        "required": ["status"]
+      },
       "NotificationRequest": {
         "type": "object",
         "properties": {
-          "user_id": { "type": "string", "format": "uuid" },
-          "userId": { "type": "string", "format": "uuid" },
           "title": { "type": "string" },
           "content": { "type": "string" },
           "notification_type": { "$ref": "#/components/schemas/NotificationType" },
@@ -902,8 +1036,8 @@
       "User": {
         "type": "object",
         "properties": {
-          "_id": { "type": "string", "format": "uuid" },
-          "user_id": { "type": "string", "format": "uuid" },
+          "_id": { "type": "string", "format": "uuid", "readOnly": true },
+          "user_id": { "type": "string", "format": "uuid", "readOnly": true },
           "phone": { "type": "string", "nullable": true },
           "email": { "type": "string", "format": "email", "nullable": true },
           "displayName": { "type": "string" },
@@ -914,23 +1048,23 @@
           "avatarId": { "type": "string", "nullable": true },
           "isActive": { "type": "boolean" },
           "is_active": { "type": "boolean" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true },
-          "updated_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
+          "updated_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "Category": {
         "type": "object",
         "properties": {
-          "category_id": { "type": "string", "format": "uuid" },
+          "category_id": { "type": "string", "format": "uuid", "readOnly": true },
           "category_name": { "type": "string" },
           "description": { "type": "string", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "Service": {
         "type": "object",
         "properties": {
-          "service_id": { "type": "string", "format": "uuid" },
+          "service_id": { "type": "string", "format": "uuid", "readOnly": true },
           "category_id": { "type": "string", "format": "uuid", "nullable": true },
           "service_name": { "type": "string" },
           "price": { "type": "number", "format": "decimal" },
@@ -938,15 +1072,15 @@
           "description": { "type": "string", "nullable": true },
           "image_url": { "type": "string", "nullable": true },
           "is_active": { "type": "boolean", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true },
-          "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
+          "updated_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
           "categories": { "$ref": "#/components/schemas/Category" }
         }
       },
       "Stylist": {
         "type": "object",
         "properties": {
-          "stylist_id": { "type": "string", "format": "uuid" },
+          "stylist_id": { "type": "string", "format": "uuid", "readOnly": true },
           "full_name": { "type": "string" },
           "phone": { "type": "string", "nullable": true },
           "email": { "type": "string", "format": "email", "nullable": true },
@@ -954,7 +1088,7 @@
           "experience_years": { "type": "integer", "nullable": true },
           "bio": { "type": "string", "nullable": true },
           "is_active": { "type": "boolean", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "StylistService": {
@@ -967,28 +1101,28 @@
       "Cart": {
         "type": "object",
         "properties": {
-          "cart_id": { "type": "string", "format": "uuid" },
+          "cart_id": { "type": "string", "format": "uuid", "readOnly": true },
           "user_id": { "type": "string", "format": "uuid", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
           "booking_cart_items": { "type": "array", "items": { "$ref": "#/components/schemas/CartItem" } }
         }
       },
       "CartItem": {
         "type": "object",
         "properties": {
-          "cart_item_id": { "type": "string", "format": "uuid" },
+          "cart_item_id": { "type": "string", "format": "uuid", "readOnly": true },
           "cart_id": { "type": "string", "format": "uuid", "nullable": true },
           "service_id": { "type": "string", "format": "uuid", "nullable": true },
           "quantity": { "type": "integer", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
           "services": { "$ref": "#/components/schemas/Service" }
         }
       },
       "Booking": {
         "type": "object",
         "properties": {
-          "booking_id": { "type": "string", "format": "uuid" },
-          "booking_code": { "type": "string" },
+          "booking_id": { "type": "string", "format": "uuid", "readOnly": true },
+          "booking_code": { "type": "string", "readOnly": true },
           "user_id": { "type": "string", "format": "uuid", "nullable": true },
           "stylist_id": { "type": "string", "format": "uuid", "nullable": true },
           "booking_date": { "type": "string", "format": "date-time" },
@@ -996,8 +1130,8 @@
           "note": { "type": "string", "nullable": true },
           "total_amount": { "type": "number", "format": "decimal", "nullable": true },
           "status": { "$ref": "#/components/schemas/BookingStatus" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true },
-          "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
+          "updated_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
           "users": { "$ref": "#/components/schemas/User" },
           "stylists": { "$ref": "#/components/schemas/Stylist" },
           "booking_items": { "type": "array", "items": { "$ref": "#/components/schemas/BookingItem" } },
@@ -1007,7 +1141,7 @@
       "BookingItem": {
         "type": "object",
         "properties": {
-          "booking_item_id": { "type": "string", "format": "uuid" },
+          "booking_item_id": { "type": "string", "format": "uuid", "readOnly": true },
           "booking_id": { "type": "string", "format": "uuid", "nullable": true },
           "service_id": { "type": "string", "format": "uuid", "nullable": true },
           "quantity": { "type": "integer", "nullable": true },
@@ -1018,70 +1152,89 @@
       "BookingReschedule": {
         "type": "object",
         "properties": {
-          "reschedule_id": { "type": "string", "format": "uuid" },
+          "reschedule_id": { "type": "string", "format": "uuid", "readOnly": true },
           "booking_id": { "type": "string", "format": "uuid", "nullable": true },
           "old_booking_date": { "type": "string", "format": "date-time", "nullable": true },
           "old_booking_time": { "type": "string", "format": "date-time", "nullable": true },
           "new_booking_date": { "type": "string", "format": "date-time", "nullable": true },
           "new_booking_time": { "type": "string", "format": "date-time", "nullable": true },
           "reason": { "type": "string", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
+        }
+      },
+      "Billing": {
+        "type": "object",
+        "properties": {
+          "billing_id": { "type": "string", "format": "uuid", "readOnly": true },
+          "billing_code": { "type": "string", "readOnly": true },
+          "booking_id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid", "nullable": true },
+          "subtotal": { "type": "number", "format": "decimal" },
+          "discount_amount": { "type": "number", "format": "decimal", "nullable": true },
+          "total_amount": { "type": "number", "format": "decimal" },
+          "payment_method": { "$ref": "#/components/schemas/PaymentMethod" },
+          "status": { "$ref": "#/components/schemas/BillingStatus" },
+          "paid_at": { "type": "string", "format": "date-time", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
+          "updated_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true },
+          "users": { "$ref": "#/components/schemas/User" },
+          "bookings": { "$ref": "#/components/schemas/Booking" }
         }
       },
       "Notification": {
         "type": "object",
         "properties": {
-          "notification_id": { "type": "string", "format": "uuid" },
+          "notification_id": { "type": "string", "format": "uuid", "readOnly": true },
           "user_id": { "type": "string", "format": "uuid", "nullable": true },
           "title": { "type": "string", "nullable": true },
           "content": { "type": "string", "nullable": true },
           "notification_type": { "$ref": "#/components/schemas/NotificationType" },
           "is_read": { "type": "boolean", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "Promotion": {
         "type": "object",
         "properties": {
-          "promotion_id": { "type": "string", "format": "uuid" },
+          "promotion_id": { "type": "string", "format": "uuid", "readOnly": true },
           "title": { "type": "string", "nullable": true },
           "description": { "type": "string", "nullable": true },
           "discount_percent": { "type": "integer", "nullable": true },
           "start_date": { "type": "string", "format": "date-time", "nullable": true },
           "end_date": { "type": "string", "format": "date-time", "nullable": true },
           "is_active": { "type": "boolean", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "Location": {
         "type": "object",
         "properties": {
-          "location_id": { "type": "string", "format": "uuid" },
+          "location_id": { "type": "string", "format": "uuid", "readOnly": true },
           "salon_name": { "type": "string", "nullable": true },
           "address": { "type": "string", "nullable": true },
           "hotline": { "type": "string", "nullable": true },
           "opening_hours": { "type": "string", "nullable": true },
           "latitude": { "type": "number", "format": "decimal", "nullable": true },
           "longitude": { "type": "number", "format": "decimal", "nullable": true },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "Session": {
         "type": "object",
         "properties": {
-          "session_id": { "type": "string", "format": "uuid" },
+          "session_id": { "type": "string", "format": "uuid", "readOnly": true },
           "expires_at": { "type": "string", "format": "date-time" },
-          "created_at": { "type": "string", "format": "date-time", "nullable": true }
+          "created_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "ChatMessage": {
         "type": "object",
         "properties": {
-          "message_id": { "type": "string", "format": "uuid" },
+          "message_id": { "type": "string", "format": "uuid", "readOnly": true },
           "user_id": { "type": "string", "format": "uuid", "nullable": true },
           "sender_type": { "type": "string" },
           "message_content": { "type": "string" },
-          "sent_at": { "type": "string", "format": "date-time", "nullable": true }
+          "sent_at": { "type": "string", "format": "date-time", "nullable": true, "readOnly": true }
         }
       },
       "Dashboard": {
@@ -1094,6 +1247,8 @@
         }
       },
       "BookingStatus": { "type": "string", "enum": ["PENDING", "CONFIRMED", "COMPLETED", "CANCELLED"] },
+      "BillingStatus": { "type": "string", "enum": ["UNPAID", "PAID", "CANCELLED", "REFUNDED"] },
+      "PaymentMethod": { "type": "string", "enum": ["CASH", "CARD", "BANK_TRANSFER", "E_WALLET"] },
       "NotificationType": { "type": "string", "enum": ["BOOKING_CONFIRMED", "BOOKING_COMPLETED", "PROMOTION", "NEW_SERVICE"] },
       "UserResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/User" } } } } }] },
       "UsersResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "users": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } } } } }] },
@@ -1111,6 +1266,8 @@
       "BookingResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "booking": { "$ref": "#/components/schemas/Booking" } } } } }] },
       "BookingsResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "bookings": { "type": "array", "items": { "$ref": "#/components/schemas/Booking" } } } } } }] },
       "ReschedulesResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "reschedules": { "type": "array", "items": { "$ref": "#/components/schemas/BookingReschedule" } } } } } }] },
+      "BillingResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "billing": { "$ref": "#/components/schemas/Billing" } } } } }] },
+      "BillingsResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "billings": { "type": "array", "items": { "$ref": "#/components/schemas/Billing" } } } } } }] },
       "NotificationResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "notification": { "$ref": "#/components/schemas/Notification" } } } } }] },
       "NotificationsResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "notifications": { "type": "array", "items": { "$ref": "#/components/schemas/Notification" } } } } } }] },
       "PromotionResponse": { "allOf": [{ "$ref": "#/components/schemas/ApiResponseBase" }, { "type": "object", "properties": { "data": { "type": "object", "properties": { "promotion": { "$ref": "#/components/schemas/Promotion" } } } } }] },

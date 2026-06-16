@@ -21,4 +21,16 @@ export const bookingInclude = {
   booking_reschedules: true,
 }
 
+export const billingInclude = {
+  users: true,
+  bookings: {
+    include: {
+      stylists: true,
+      booking_items: { include: { services: true } },
+    },
+  },
+}
+
 export const createBookingCode = () => `BK${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`
+
+export const createBillingCode = () => `BL${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`

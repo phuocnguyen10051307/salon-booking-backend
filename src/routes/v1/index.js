@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes'
 
 import { adminRoute } from './admin.route.js'
 import { authRoute } from './auth.route.js'
+import { billingRoute } from './billing.route.js'
 import { bookingsRoute } from './bookings.route.js'
 import { cartRoute } from './cart.route.js'
 import { categoriesRoute } from './categories.route.js'
@@ -32,6 +33,7 @@ Router.use('/services', servicesRoute)
 Router.use('/stylists', stylistsRoute)
 Router.use('/cart', cartRoute)
 Router.use('/bookings', bookingsRoute)
+Router.use('/billing', billingRoute)
 Router.use('/notifications', notificationsRoute)
 Router.use('/promotions', promotionsRoute)
 Router.use('/locations', locationsRoute)
