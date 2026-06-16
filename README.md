@@ -35,7 +35,7 @@ src/
   controllers/     Xử lý request/response cho từng nhóm API
   middlewares/     Middleware xác thực, validate và xử lý lỗi
   providers/       Provider JWT
-  routes/          Khai báo route API theo version
+  routes/          Khai báo route API theo version và tách theo domain
   services/        Logic nghiệp vụ, hiện có auth service
   utils/           Helper, constant, formatter và custom error
   validations/     Schema validate bằng Zod
