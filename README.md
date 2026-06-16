@@ -1,125 +1,186 @@
-# salon-booking-server
+# Salon Booking Server
 
-Backend Node.js / Express cho hệ thống đặt lịch salon.
+Backend REST API cho hệ thống đặt lịch salon. Dự án được xây dựng bằng Node.js, Express, Prisma và PostgreSQL, hỗ trợ xác thực người dùng, quản lý dịch vụ, stylist, giỏ đặt lịch, booking, khuyến mãi, thông báo, chat và các chức năng quản trị.
 
-## Tổng quan dự án
+## Tính năng chính
 
-Ứng dụng backend cung cấp API xác thực, quản lý session, và kết nối với cơ sở dữ liệu PostgreSQL thông qua Prisma.
+- Đăng ký, đăng nhập, đăng xuất, refresh token và lấy thông tin người dùng hiện tại.
+- Quản lý hồ sơ cá nhân và đổi mật khẩu.
+- Quản lý danh mục dịch vụ, dịch vụ salon và stylist.
+- Gán dịch vụ cho stylist.
+- Quản lý giỏ đặt lịch của khách hàng.
+- Tạo booking, xem lịch sử booking, hủy lịch và đổi lịch.
+- Quản lý thông báo, khuyến mãi và chi nhánh salon.
+- Quản lý phiên đăng nhập.
+- Lưu và quản lý tin nhắn chat.
+- API quản trị cho dashboard, thống kê, báo cáo, người dùng và booking.
+- Tài liệu API bằng Swagger UI tại `/api-docs`.
 
-## Cấu trúc dự án
+## Công nghệ sử dụng
 
-Mã nguồn chính nằm trong thư mục `src/`.
+- Node.js + Express 5
+- PostgreSQL
+- Prisma ORM
+- JWT cho access token và refresh token
+- Cookie HTTP-only cho refresh token
+- Zod để validate request
+- Swagger UI để hiển thị tài liệu API
+- Helmet, CORS, Morgan và Cookie Parser
 
-### `src/server.js`
+## Cấu trúc thư mục
 
-- Điểm vào của server.
-- Khởi tạo Express, middleware, CORS, Swagger UI và các route.
+```text
+src/
+  config/          Cấu hình môi trường, CORS, cookie, database và Prisma
+  controllers/     Xử lý request/response cho từng nhóm API
+  middlewares/     Middleware xác thực, validate và xử lý lỗi
+  providers/       Provider JWT
+  routes/          Khai báo route API theo version
+  services/        Logic nghiệp vụ, hiện có auth service
+  utils/           Helper, constant, formatter và custom error
+  validations/     Schema validate bằng Zod
+  swagger.json     Tài liệu OpenAPI cho Swagger UI
+prisma/
+  schema.prisma    Schema database
+  migrations/      Lịch sử migration
+```
 
-### `src/config/`
-
-Chứa cài đặt môi trường và cấu hình chung.
-
-- `environment.js`: nạp biến môi trường.
-- `cors.js`: cấu hình CORS.
-- `cookie.js`: cấu hình cookie refresh token.
-- `prisma.js`: khởi tạo Prisma client.
-
-### `src/routes/`
-
-Chứa định nghĩa route REST API.
-
-- `v1/auth.route.js`: các endpoint auth như `signup`, `signin`, `signout`, `refresh-token`, `me`.
-- `v1/index.js`: router chính cho API phiên bản 1.
-
-### `src/controllers/`
-
-Chứa controller xử lý yêu cầu đến từ route.
-
-- `auth.controller.js`: controller cho auth và trả về dữ liệu user/token.
-
-### `src/services/`
-
-Chứa logic nghiệp vụ thực sự.
-
-- `auth.service.js`: xử lý đăng ký, đăng nhập, signout và refresh token.
-
-### `src/middlewares/`
-
-Chứa middleware Express.
-
-- `auth.middleware.js`: xác thực access token và gán `req.user`.
-- `validation.middleware.js`: xác thực request body bằng Zod.
-
-### `src/validations/`
-
-Chứa schema Zod cho các payload.
-
-- `auth.validation.js`: schema đăng ký và đăng nhập.
-
-### `src/providers/`
-
-Chứa logic cung cấp dịch vụ.
-
-- `jwt.provider.js`: tạo và xác thực JWT.
-
-### `src/utils/`
-
-Chứa helper và util chung.
-
-- `formatters.js`: định dạng dữ liệu user.
-- `ApiError.js`: lớp custom error.
-- `constants.js`: các hằng số dùng chung.
-
-### `src/generated/`
-
-Chứa mã tự động tạo từ Prisma.
-
-### `src/models/`
-
-Chứa định nghĩa mô hình hoặc helper liên quan đến dữ liệu.
-
-## Chạy dự án
-
-1. Cài đặt dependencies:
+## Cài đặt
 
 ```bash
 npm install
 ```
 
-2. Sao chép file môi trường:
+Tạo file `.env` từ file mẫu:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Cấu hình biến môi trường trong `.env`.
+Cấu hình các biến môi trường cần thiết:
 
-4. Chạy server ở chế độ phát triển:
+```env
+HOST=localhost
+PORT=3000
+BUILD_MODE=development
+
+DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
+
+JWT_ACCESS_SECRET=your_access_secret
+JWT_ACCESS_EXPIRATION=15m
+JWT_REFRESH_SECRET=your_refresh_secret
+JWT_REFRESH_EXPIRATION=14d
+
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+```
+
+## Database
+
+Generate Prisma Client:
+
+```bash
+npx prisma generate
+```
+
+Chạy migration nếu cần tạo/cập nhật database:
+
+```bash
+npx prisma migrate dev
+```
+
+## Chạy dự án
+
+Chạy ở môi trường phát triển:
 
 ```bash
 npm run dev
 ```
 
-5. Hoặc chạy production:
+Chạy bằng Node:
 
 ```bash
 npm start
 ```
 
-## API auth chính
+Mặc định server chạy tại:
 
-- `POST /v1/auth/signup`
-- `POST /v1/auth/signin`
-- `GET /v1/auth/me`
-- `POST /v1/auth/signout`
-- `POST /v1/auth/refresh-token`
+```text
+http://localhost:3000
+```
 
 ## Tài liệu API
 
-Swagger UI được phục vụ tại `/api-docs` khi server đang chạy.
+Sau khi server chạy, mở Swagger UI tại:
+
+```text
+http://localhost:3000/api-docs
+```
+
+Swagger hiện mô tả đầy đủ các nhóm API:
+
+- System
+- Auth
+- Users
+- Categories
+- Services
+- Stylists
+- Cart
+- Bookings
+- Admin Bookings
+- Notifications
+- Promotions
+- Locations
+- Sessions
+- Chat
+- Admin dashboard, statistics, reports và users
+
+## Một số endpoint chính
+
+```text
+GET    /v1/status
+
+POST   /v1/auth/signup
+POST   /v1/auth/signin
+GET    /v1/auth/me
+POST   /v1/auth/signout
+POST   /v1/auth/refresh-token
+
+GET    /v1/categories
+GET    /v1/services
+GET    /v1/stylists
+GET    /v1/promotions
+GET    /v1/locations
+
+GET    /v1/cart
+POST   /v1/cart/items
+POST   /v1/bookings
+GET    /v1/bookings
+
+GET    /v1/admin/dashboard
+GET    /v1/admin/bookings
+GET    /v1/admin/users
+```
+
+Các endpoint cần đăng nhập sử dụng header:
+
+```text
+Authorization: Bearer <accessToken>
+```
+
+## Scripts
+
+```bash
+npm run dev      # Chạy server bằng nodemon
+npm start        # Chạy server bằng node
+npm run lint     # Kiểm tra lint
+npm run format   # Format code bằng Prettier
+```
 
 ## Ghi chú
 
-- Sử dụng PostgreSQL với Prisma.
-- Access token được xác thực bằng middleware, refresh token được lưu trong cookie.
-- Kiểm tra cấu hình CORS nếu frontend và backend chạy trên origin khác nhau.
+- Response API thường có dạng `success`, `message` và `data`.
+- Refresh token được lưu trong cookie tên `refreshToken`.
+- Nếu frontend và backend chạy khác origin, cần kiểm tra cấu hình CORS trong `src/config/cors.js`.
+- File Swagger được load từ `src/swagger.json`, nên sau khi sửa tài liệu chỉ cần restart server để Swagger UI nhận bản mới.
