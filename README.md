@@ -90,6 +90,12 @@ Chạy migration nếu cần tạo/cập nhật database:
 npx prisma migrate dev
 ```
 
+Thêm dữ liệu mẫu cho frontend:
+
+```bash
+npm run seed
+```
+
 ## Chạy dự án
 
 Chạy ở môi trường phát triển:

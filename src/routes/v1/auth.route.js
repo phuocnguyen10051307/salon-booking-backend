@@ -9,6 +9,12 @@ const Router = express.Router()
 // Register a new user
 Router.post('/signup', validate(authValidation.signupSchema), authController.signup)
 
+// Verify signup OTP
+Router.post('/verify-signup-otp', validate(authValidation.verifySignupOtpSchema), authController.verifySignupOtp)
+
+// Resend signup OTP
+Router.post('/resend-signup-otp', validate(authValidation.resendSignupOtpSchema), authController.resendSignupOtp)
+
 // Login
 Router.post('/signin', validate(authValidation.signinSchema), authController.signin)
 
