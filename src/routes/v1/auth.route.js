@@ -22,9 +22,10 @@ Router.post('/signin', validate(authValidation.signinSchema), authController.sig
 Router.get('/me', authMiddleware.protectedRoute, authController.me)
 
 // Logout
-Router.post('/signout', authController.signout)
+Router.post('/signout', authMiddleware.protectedRoute, authController.signout)
 
 // Refresh access token
 Router.post('/refresh-token', authController.refreshToken)
 
 export const authRoute = Router
+

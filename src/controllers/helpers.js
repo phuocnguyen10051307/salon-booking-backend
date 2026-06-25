@@ -8,6 +8,7 @@ export const ok = (res, message, data = null, statusCode = StatusCodes.OK) =>
   })
 
 export const getUserId = (req) => req.user?._id
+export const getUserRole = (req) => req.user?.role?.toUpperCase()
 
 export const parseDate = (value) => (value ? new Date(`${value}T00:00:00.000Z`) : undefined)
 
@@ -34,3 +35,4 @@ export const billingInclude = {
 export const createBookingCode = () => `BK${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`
 
 export const createBillingCode = () => `BL${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`
+

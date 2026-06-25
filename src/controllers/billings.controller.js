@@ -3,7 +3,7 @@ import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
 import ApiError from '../utils/ApiError.js'
-import { billingInclude, createBillingCode, getUserId, ok } from './helpers.js'
+import { billingInclude, createBillingCode, getUserId, getUserRole, ok } from './helpers.js'
 
 const normalizePaymentMethod = (value) => (value ? value.toUpperCase() : 'CASH')
 const normalizeBillingStatus = (value) => (value ? value.toUpperCase() : 'UNPAID')
@@ -110,9 +110,10 @@ const payBilling = asyncHandler(async (req, res) => {
 })
 
 const updateBillingStatus = asyncHandler(async (req, res) => {
-  const existing = await prisma.billings.findFirst({
-    where: { billing_id: req.params.id, user_id: getUserId(req) },
-  })
+  const role = getUserRole(req)
+  const where = role === 'ADMIN' ? { billing_id: req.params.id } : { billing_id: req.params.id, user_id: getUserId(req) }
+
+  const existing = await prisma.billings.findFirst({ where })
   if (!existing) throw new ApiError(StatusCodes.NOT_FOUND, 'Billing not found')
 
   const status = normalizeBillingStatus(req.body.status)

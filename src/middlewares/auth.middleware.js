@@ -29,7 +29,12 @@ export const protectedRoute = async (req, res, next) => {
     req.user = authService.mapUserResponse(user)
     next()
   } catch (error) {
-    if (['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name)) {
+    if (error.name === 'TokenExpiredError') {
+      console.error(error)
+      return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Access token expired' })
+    }
+
+    if (['JsonWebTokenError', 'NotBeforeError'].includes(error.name)) {
       console.error(error)
       return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Invalid access token' })
     }
@@ -39,6 +44,24 @@ export const protectedRoute = async (req, res, next) => {
   }
 }
 
+// Role guard used after protectedRoute has attached the current user.
+export const requireRoles = (...allowedRoles) => (req, res, next) => {
+  const currentRole = req.user?.role?.toUpperCase()
+  const normalizedAllowedRoles = allowedRoles.map((role) => role.toUpperCase())
+
+  if (!currentRole) {
+    return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'User role is missing' })
+  }
+
+  if (!normalizedAllowedRoles.includes(currentRole)) {
+    return res.status(StatusCodes.FORBIDDEN).json({ message: 'You do not have permission to access this resource' })
+  }
+
+  next()
+}
+
 export const authMiddleware = {
   protectedRoute,
+  requireRoles,
 }
+

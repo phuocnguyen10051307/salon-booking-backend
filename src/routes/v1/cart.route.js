@@ -5,11 +5,14 @@ import { bookingCartsController } from '../../controllers/booking_carts.controll
 
 const Router = express.Router()
 const protectedRoute = authMiddleware.protectedRoute
+const customerOnly = authMiddleware.requireRoles('CUSTOMER')
 
-Router.get('/', protectedRoute, bookingCartsController.getCart)
-Router.post('/items', protectedRoute, bookingCartsController.addCartItem)
-Router.put('/items/:itemId', protectedRoute, bookingCartsController.updateCartItem)
-Router.delete('/items/:itemId', protectedRoute, bookingCartsController.deleteCartItem)
-Router.delete('/', protectedRoute, bookingCartsController.clearCart)
+Router.get('/', protectedRoute, customerOnly, bookingCartsController.getCart)
+Router.post('/items', protectedRoute, customerOnly, bookingCartsController.addCartItem)
+Router.put('/items/:itemId', protectedRoute, customerOnly, bookingCartsController.updateCartItem)
+Router.delete('/items/:itemId', protectedRoute, customerOnly, bookingCartsController.deleteCartItem)
+Router.delete('/', protectedRoute, customerOnly, bookingCartsController.clearCart)
 
 export const cartRoute = Router
+
+

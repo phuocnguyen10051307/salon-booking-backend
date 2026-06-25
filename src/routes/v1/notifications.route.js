@@ -5,11 +5,14 @@ import { notificationsController } from '../../controllers/notifications.control
 
 const Router = express.Router()
 const protectedRoute = authMiddleware.protectedRoute
+const adminOnly = authMiddleware.requireRoles('ADMIN')
 
 Router.get('/', protectedRoute, notificationsController.listNotifications)
 Router.patch('/:id/read', protectedRoute, notificationsController.markNotificationRead)
 Router.patch('/read-all', protectedRoute, notificationsController.markAllNotificationsRead)
-Router.post('/', protectedRoute, notificationsController.createNotification)
-Router.delete('/:id', protectedRoute, notificationsController.deleteNotification)
+Router.post('/', protectedRoute, adminOnly, notificationsController.createNotification)
+Router.delete('/:id', protectedRoute, adminOnly, notificationsController.deleteNotification)
 
 export const notificationsRoute = Router
+
+

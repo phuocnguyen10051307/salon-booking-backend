@@ -5,9 +5,13 @@ import { chatMessagesController } from '../../controllers/chat_messages.controll
 
 const Router = express.Router()
 const protectedRoute = authMiddleware.protectedRoute
+const staffOrCustomer = authMiddleware.requireRoles('STAFF', 'CUSTOMER')
+const staffOrAdmin = authMiddleware.requireRoles('STAFF', 'ADMIN')
 
-Router.get('/messages', protectedRoute, chatMessagesController.listChatMessages)
-Router.post('/messages', protectedRoute, chatMessagesController.createChatMessage)
-Router.delete('/messages/:id', protectedRoute, chatMessagesController.deleteChatMessage)
+Router.get('/messages', protectedRoute, staffOrCustomer, chatMessagesController.listChatMessages)
+Router.post('/messages', protectedRoute, staffOrCustomer, chatMessagesController.createChatMessage)
+Router.delete('/messages/:id', protectedRoute, staffOrAdmin, chatMessagesController.deleteChatMessage)
 
 export const chatRoute = Router
+
+

@@ -3,11 +3,40 @@ import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
 import ApiError from '../utils/ApiError.js'
-import { bookingInclude, createBookingCode, getUserId, ok, parseDate, parseTime } from './helpers.js'
+import {
+  billingInclude,
+  bookingInclude,
+  createBillingCode,
+  createBookingCode,
+  getUserId,
+  getUserRole,
+  ok,
+  parseDate,
+  parseTime,
+} from './helpers.js'
 
-const createBooking = asyncHandler(async (req, res) => {
-  const userId = getUserId(req)
-  const bodyItems = req.body.items || []
+const normalizePaymentMethod = (value) => (value ? value.toUpperCase() : 'CASH')
+
+const requireScheduleInput = (body) => {
+  const bookingDateInput = body.booking_date || body.bookingDate
+  const bookingTimeInput = body.booking_time || body.bookingTime
+
+  if (!bookingDateInput) throw new ApiError(StatusCodes.BAD_REQUEST, 'Booking date is required')
+  if (!bookingTimeInput) throw new ApiError(StatusCodes.BAD_REQUEST, 'Booking time is required')
+
+  return {
+    bookingDate: parseDate(bookingDateInput),
+    bookingTime: parseTime(bookingTimeInput),
+  }
+}
+
+const normalizeCartItemIds = (input) => {
+  if (!input) return []
+  if (Array.isArray(input)) return input.map((item) => item?.toString()).filter(Boolean)
+  return [input.toString()].filter(Boolean)
+}
+
+const resolveBookingItems = async (userId, bodyItems = [], cartItemIds = []) => {
   let items = bodyItems
 
   if (!items.length) {
@@ -15,8 +44,13 @@ const createBooking = asyncHandler(async (req, res) => {
       where: { user_id: userId },
       include: { booking_cart_items: { include: { services: true } } },
     })
+
+    const filteredCartItems = cart?.booking_cart_items.filter((item) =>
+      !cartItemIds.length ? true : cartItemIds.includes(item.cart_item_id)
+    )
+
     items =
-      cart?.booking_cart_items.map((item) => ({
+      filteredCartItems?.map((item) => ({
         service_id: item.service_id,
         quantity: item.quantity,
         price: item.services?.price,
@@ -25,41 +59,135 @@ const createBooking = asyncHandler(async (req, res) => {
 
   if (!items.length) throw new ApiError(StatusCodes.BAD_REQUEST, 'Booking items are required')
 
-  const serviceIds = items.map((item) => item.service_id || item.serviceId)
+  const serviceIds = items.map((item) => item.service_id || item.serviceId).filter(Boolean)
   const services = await prisma.services.findMany({ where: { service_id: { in: serviceIds } } })
   const serviceById = new Map(services.map((service) => [service.service_id, service]))
-  const totalAmount = items.reduce((sum, item) => {
-    const service = serviceById.get(item.service_id || item.serviceId)
-    return sum + Number(item.price || service?.price || 0) * (item.quantity || 1)
-  }, 0)
 
-  const booking = await prisma.bookings.create({
-    data: {
-      booking_code: req.body.booking_code || req.body.bookingCode || createBookingCode(),
-      user_id: userId,
-      stylist_id: req.body.stylist_id || req.body.stylistId,
-      booking_date: parseDate(req.body.booking_date || req.body.bookingDate),
-      booking_time: parseTime(req.body.booking_time || req.body.bookingTime),
-      note: req.body.note,
-      total_amount: totalAmount,
-      booking_items: {
-        create: items.map((item) => {
-          const serviceId = item.service_id || item.serviceId
-          return {
-            service_id: serviceId,
-            quantity: item.quantity || 1,
-            price: item.price || serviceById.get(serviceId)?.price || 0,
-          }
-        }),
-      },
-    },
+  const normalizedItems = items.map((item) => {
+    const serviceId = item.service_id || item.serviceId
+    const service = serviceById.get(serviceId)
+
+    if (!serviceId || !service) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'One or more services are invalid')
+    }
+
+    return {
+      service_id: serviceId,
+      quantity: Math.max(Number(item.quantity) || 1, 1),
+      price: Number(item.price || service.price || 0),
+    }
+  })
+
+  const totalAmount = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+  return { items: normalizedItems, totalAmount }
+}
+
+const findOwnedBooking = async (bookingId, userId) => {
+  const booking = await prisma.bookings.findFirst({
+    where: { booking_id: bookingId, user_id: userId },
     include: bookingInclude,
   })
 
-  const cart = await prisma.booking_carts.findFirst({ where: { user_id: userId } })
-  if (cart) await prisma.booking_cart_items.deleteMany({ where: { cart_id: cart.cart_id } })
+  if (!booking) throw new ApiError(StatusCodes.NOT_FOUND, 'Booking not found')
+  return booking
+}
+
+const clearUserCart = async (tx, userId, cartItemIds = []) => {
+  const cart = await tx.booking_carts.findFirst({ where: { user_id: userId } })
+  if (cart) {
+    await tx.booking_cart_items.deleteMany({
+      where: {
+        cart_id: cart.cart_id,
+        ...(cartItemIds.length ? { cart_item_id: { in: cartItemIds } } : {}),
+      },
+    })
+  }
+}
+
+const createBooking = asyncHandler(async (req, res) => {
+  const userId = getUserId(req)
+  const { bookingDate, bookingTime } = requireScheduleInput(req.body)
+  const cartItemIds = normalizeCartItemIds(req.body.cart_item_ids || req.body.cartItemIds)
+  const { items, totalAmount } = await resolveBookingItems(userId, req.body.items || [], cartItemIds)
+
+  const booking = await prisma.$transaction(async (tx) => {
+    const createdBooking = await tx.bookings.create({
+      data: {
+        booking_code: req.body.booking_code || req.body.bookingCode || createBookingCode(),
+        user_id: userId,
+        stylist_id: req.body.stylist_id || req.body.stylistId,
+        booking_date: bookingDate,
+        booking_time: bookingTime,
+        note: req.body.note,
+        total_amount: totalAmount,
+        booking_items: {
+          create: items.map((item) => ({
+            service_id: item.service_id,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+        },
+      },
+      include: bookingInclude,
+    })
+
+    await clearUserCart(tx, userId, cartItemIds)
+    return createdBooking
+  })
 
   ok(res, 'Tao lich dat thanh cong', { booking }, StatusCodes.CREATED)
+})
+
+const checkoutBooking = asyncHandler(async (req, res) => {
+  const userId = getUserId(req)
+  const { bookingDate, bookingTime } = requireScheduleInput(req.body)
+  const cartItemIds = normalizeCartItemIds(req.body.cart_item_ids || req.body.cartItemIds)
+  const { items, totalAmount } = await resolveBookingItems(userId, req.body.items || [], cartItemIds)
+  const paymentMethod = normalizePaymentMethod(req.body.payment_method || req.body.paymentMethod)
+  const discountAmount = Math.max(Number(req.body.discount_amount || req.body.discountAmount || 0), 0)
+
+  const result = await prisma.$transaction(async (tx) => {
+    const booking = await tx.bookings.create({
+      data: {
+        booking_code: req.body.booking_code || req.body.bookingCode || createBookingCode(),
+        user_id: userId,
+        stylist_id: req.body.stylist_id || req.body.stylistId,
+        booking_date: bookingDate,
+        booking_time: bookingTime,
+        note: req.body.note,
+        total_amount: totalAmount,
+        booking_items: {
+          create: items.map((item) => ({
+            service_id: item.service_id,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+        },
+      },
+      include: bookingInclude,
+    })
+
+    const billing = await tx.billings.create({
+      data: {
+        billing_code: req.body.billing_code || req.body.billingCode || createBillingCode(),
+        booking_id: booking.booking_id,
+        user_id: userId,
+        subtotal: totalAmount,
+        discount_amount: discountAmount,
+        total_amount: Math.max(totalAmount - discountAmount, 0),
+        payment_method: paymentMethod,
+        status: 'UNPAID',
+      },
+      include: billingInclude,
+    })
+
+    await clearUserCart(tx, userId, cartItemIds)
+
+    return { booking, billing }
+  })
+
+  ok(res, 'Tao lich dat va hoa don thanh cong', result, StatusCodes.CREATED)
 })
 
 const listBookings = asyncHandler(async (req, res) => {
@@ -72,8 +200,41 @@ const listBookings = asyncHandler(async (req, res) => {
 })
 
 const listAdminBookings = asyncHandler(async (req, res) => {
-  const bookings = await prisma.bookings.findMany({ include: bookingInclude, orderBy: { created_at: 'desc' } })
+  const where = {
+    ...(req.query.date ? { booking_date: parseDate(req.query.date) } : {}),
+    ...(req.query.stylistId ? { stylist_id: req.query.stylistId } : {}),
+    ...(req.query.status ? { status: req.query.status.toUpperCase() } : {}),
+  }
+  const bookings = await prisma.bookings.findMany({ where, include: bookingInclude, orderBy: { created_at: 'desc' } })
   ok(res, 'Lay danh sach dat lich thanh cong', { bookings })
+})
+
+const listStaffTodayBookings = asyncHandler(async (req, res) => {
+  const user = await prisma.users.findUnique({ where: { user_id: getUserId(req) } })
+  const now = new Date()
+  const bookingDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+
+  let stylistId = req.query.stylistId
+  if (getUserRole(req) === 'STAFF') {
+    const staffMatches = [{ email: user?.email || undefined }, { phone: user?.phone || undefined }].filter(
+      (item) => Object.values(item)[0]
+    )
+    const stylist = staffMatches.length ? await prisma.stylists.findFirst({ where: { OR: staffMatches } }) : null
+    stylistId = stylist?.stylist_id
+  }
+
+  if (!stylistId) return ok(res, 'Lay lich lam hom nay thanh cong', { bookings: [] })
+
+  const bookings = await prisma.bookings.findMany({
+    where: {
+      stylist_id: stylistId,
+      booking_date: bookingDate,
+      status: { in: ['PENDING', 'CONFIRMED'] },
+    },
+    include: bookingInclude,
+    orderBy: { booking_time: 'asc' },
+  })
+  ok(res, 'Lay lich lam hom nay thanh cong', { bookings })
 })
 
 const getBooking = asyncHandler(async (req, res) => {
@@ -96,6 +257,8 @@ const updateBookingStatus = asyncHandler(async (req, res) => {
 })
 
 const cancelBooking = asyncHandler(async (req, res) => {
+  await findOwnedBooking(req.params.id, getUserId(req))
+
   const booking = await prisma.bookings.update({
     where: { booking_id: req.params.id },
     data: { status: 'CANCELLED', updated_at: new Date() },
@@ -105,23 +268,21 @@ const cancelBooking = asyncHandler(async (req, res) => {
 })
 
 const rescheduleBooking = asyncHandler(async (req, res) => {
-  const existing = await prisma.bookings.findUnique({ where: { booking_id: req.params.id } })
-  if (!existing) throw new ApiError(StatusCodes.NOT_FOUND, 'Booking not found')
+  const existing = await findOwnedBooking(req.params.id, getUserId(req))
+  const { bookingDate, bookingTime } = requireScheduleInput(req.body)
 
-  const newDate = parseDate(req.body.booking_date || req.body.bookingDate)
-  const newTime = parseTime(req.body.booking_time || req.body.bookingTime)
   const booking = await prisma.bookings.update({
     where: { booking_id: req.params.id },
     data: {
-      booking_date: newDate,
-      booking_time: newTime,
+      booking_date: bookingDate,
+      booking_time: bookingTime,
       updated_at: new Date(),
       booking_reschedules: {
         create: {
           old_booking_date: existing.booking_date,
           old_booking_time: existing.booking_time,
-          new_booking_date: newDate,
-          new_booking_time: newTime,
+          new_booking_date: bookingDate,
+          new_booking_time: bookingTime,
           reason: req.body.reason,
         },
       },
@@ -132,6 +293,8 @@ const rescheduleBooking = asyncHandler(async (req, res) => {
 })
 
 const getBookingReschedules = asyncHandler(async (req, res) => {
+  await findOwnedBooking(req.params.id, getUserId(req))
+
   const reschedules = await prisma.booking_reschedules.findMany({
     where: { booking_id: req.params.id },
     orderBy: { created_at: 'desc' },
@@ -141,8 +304,10 @@ const getBookingReschedules = asyncHandler(async (req, res) => {
 
 export const bookingsController = {
   createBooking,
+  checkoutBooking,
   listBookings,
   listAdminBookings,
+  listStaffTodayBookings,
   getBooking,
   updateBookingStatus,
   cancelBooking,

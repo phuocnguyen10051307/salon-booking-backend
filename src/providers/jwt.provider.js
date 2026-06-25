@@ -9,10 +9,15 @@ import JWT from 'jsonwebtoken'
  */
 const generateToken = async (userInfo, secretSignature, tokenLife) => {
   try {
-    return JWT.sign(userInfo, secretSignature, {
+    const normalizedTokenLife = tokenLife?.trim()
+    const signOptions = {
       algorithm: 'HS256',
-      expiresIn: tokenLife,
-    })
+      ...(normalizedTokenLife && normalizedTokenLife.toLowerCase() != 'none'
+          ? { expiresIn: normalizedTokenLife }
+          : {}),
+    }
+
+    return JWT.sign(userInfo, secretSignature, signOptions)
   } catch (error) {
     throw Error(error)
   }
