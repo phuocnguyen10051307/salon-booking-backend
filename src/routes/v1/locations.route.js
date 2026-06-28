@@ -8,6 +8,7 @@ const protectedRoute = authMiddleware.protectedRoute
 const adminOnly = authMiddleware.requireRoles('ADMIN')
 
 Router.get('/', salonLocationsController.listLocations)
+Router.get('/map', salonLocationsController.listMapLocations)
 Router.get('/:id', salonLocationsController.getLocation)
 Router.post('/', protectedRoute, adminOnly, salonLocationsController.createLocation)
 Router.put('/:id', protectedRoute, adminOnly, salonLocationsController.updateLocation)

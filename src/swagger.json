@@ -231,6 +231,55 @@
         "responses": { "201": { "$ref": "#/components/responses/StylistOk" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
       }
     },
+    "/v1/stylists/sync-staff": {
+      "post": {
+        "tags": ["Stylists"],
+        "summary": "Sync staff users to stylists",
+        "description": "Admin-only endpoint. Creates or updates stylist profiles for users whose role is STAFF, matching by email or phone.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/StylistsOk" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/v1/stylists/me": {
+      "get": {
+        "tags": ["Stylists"],
+        "summary": "Get current staff stylist profile",
+        "description": "Staff-only endpoint. The backend creates or updates the stylist profile from the current STAFF user, matching by email or phone.",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/StylistOk" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/v1/stylists/me/services": {
+      "get": {
+        "tags": ["Stylists"],
+        "summary": "List services assigned to current staff stylist",
+        "security": [{ "bearerAuth": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/ServicesOk" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "post": {
+        "tags": ["Stylists"],
+        "summary": "Assign service to current staff stylist",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/StylistService" },
+        "responses": { "201": { "$ref": "#/components/responses/StylistServiceOk" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "put": {
+        "tags": ["Stylists"],
+        "summary": "Replace all services for current staff stylist",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": { "$ref": "#/components/requestBodies/StylistServices" },
+        "responses": { "200": { "$ref": "#/components/responses/ServicesOk" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/v1/stylists/me/services/{serviceId}": {
+      "delete": {
+        "tags": ["Stylists"],
+        "summary": "Remove service from current staff stylist",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ServiceId" }],
+        "responses": { "200": { "$ref": "#/components/responses/MessageOk" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/v1/stylists/{id}": {
       "get": {
         "tags": ["Stylists"],
@@ -268,6 +317,14 @@
         "parameters": [{ "$ref": "#/components/parameters/Id" }],
         "requestBody": { "$ref": "#/components/requestBodies/StylistService" },
         "responses": { "201": { "$ref": "#/components/responses/StylistServiceOk" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      },
+      "put": {
+        "tags": ["Stylists"],
+        "summary": "Replace all services assigned to stylist",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/Id" }],
+        "requestBody": { "$ref": "#/components/requestBodies/StylistServices" },
+        "responses": { "200": { "$ref": "#/components/responses/ServicesOk" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/v1/stylists/{id}/services/{serviceId}": {
@@ -646,6 +703,7 @@
       "post": {
         "tags": ["Admin"],
         "summary": "Create user",
+        "description": "Admin can create a user with role STAFF to let the account access staff stylist endpoints. When the saved role is STAFF, the backend syncs a stylist profile from the user's email or phone.",
         "security": [{ "bearerAuth": [] }],
         "requestBody": { "$ref": "#/components/requestBodies/AdminUser" },
         "responses": { "201": { "$ref": "#/components/responses/UserOk" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
@@ -661,10 +719,11 @@
       },
       "put": {
         "tags": ["Admin"],
-        "summary": "Update user",
+        "summary": "Update user, including role",
+        "description": "Admin can set role to STAFF to let an existing user access staff stylist endpoints. When the saved role is STAFF, the backend syncs a stylist profile from the user's email or phone.",
         "security": [{ "bearerAuth": [] }],
         "parameters": [{ "$ref": "#/components/parameters/Id" }],
-        "requestBody": { "$ref": "#/components/requestBodies/UserProfile" },
+        "requestBody": { "$ref": "#/components/requestBodies/AdminUserUpdate" },
         "responses": { "200": { "$ref": "#/components/responses/UserOk" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
       },
       "delete": {
@@ -716,6 +775,7 @@
       "Service": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceRequest" } } } },
       "Stylist": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StylistRequest" } } } },
       "StylistService": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StylistServiceRequest" } } } },
+      "StylistServices": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StylistServicesRequest" } } } },
       "CartItem": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CartItemRequest" } } } },
       "Quantity": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QuantityRequest" } } } },
       "Booking": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookingRequest" } } } },
@@ -729,6 +789,7 @@
       "Location": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LocationRequest" } } } },
       "ChatMessage": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatMessageRequest" } } } },
       "AdminUser": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminUserRequest" } } } },
+      "AdminUserUpdate": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminUserUpdateRequest" } } } },
       "UserStatus": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserStatusRequest" } } } }
     },
     "responses": {
@@ -840,9 +901,16 @@
           "newPassword": { "type": "string", "format": "password" }
         }
       },
-      "AdminUserRequest": {
+      "UserRole": { "type": "string", "enum": ["CUSTOMER", "STAFF", "ADMIN"], "example": "STAFF" },
+      "AdminUserUpdateRequest": {
         "allOf": [
           { "$ref": "#/components/schemas/UserProfileRequest" },
+          { "type": "object", "properties": { "role": { "$ref": "#/components/schemas/UserRole" } } }
+        ]
+      },
+      "AdminUserRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/AdminUserUpdateRequest" },
           {
             "type": "object",
             "properties": { "password": { "type": "string", "format": "password" } },
@@ -907,6 +975,15 @@
           "serviceId": { "type": "string", "format": "uuid", "description": "ID cua service da ton tai de gan cho stylist." }
         },
         "required": ["service_id"]
+      },
+      "StylistServicesRequest": {
+        "type": "object",
+        "properties": {
+          "service_ids": { "type": "array", "items": { "type": "string", "format": "uuid" }, "description": "Danh sach service ID de thay the toan bo dich vu cua stylist." },
+          "serviceIds": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          "services": { "type": "array", "items": { "type": "string", "format": "uuid" } }
+        },
+        "required": ["service_ids"]
       },
       "CartItemRequest": {
         "type": "object",
@@ -1042,7 +1119,7 @@
           "email": { "type": "string", "format": "email", "nullable": true },
           "displayName": { "type": "string" },
           "full_name": { "type": "string" },
-          "role": { "type": "string", "nullable": true },
+          "role": { "$ref": "#/components/schemas/UserRole" },
           "avatarUrl": { "type": "string", "nullable": true },
           "avatar_url": { "type": "string", "nullable": true },
           "avatarId": { "type": "string", "nullable": true },

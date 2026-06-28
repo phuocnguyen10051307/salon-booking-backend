@@ -10,6 +10,7 @@ import { JwtProvider } from '../providers/jwt.provider.js'
 import { pickUser } from '../utils/formatters.js'
 import ApiError from '../utils/ApiError.js'
 import { emailService } from './email.service.js'
+import { stylistService } from './stylist.service.js'
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString()
 
@@ -179,6 +180,8 @@ const signin = async (userData) => {
   if (!isMatch) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid email or phone or password')
   }
+
+  await stylistService.ensureStaffStylist(user)
 
   const userInfo = {
     _id: user.user_id,

@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
 import ApiError from '../utils/ApiError.js'
+import { stylistService } from '../services/stylist.service.js'
 import {
   billingInclude,
   bookingInclude,
@@ -16,6 +17,19 @@ import {
 } from './helpers.js'
 
 const normalizePaymentMethod = (value) => (value ? value.toUpperCase() : 'CASH')
+
+const getTodayBookingDate = () => {
+  const timeZone = process.env.APP_TIME_ZONE || 'Asia/Ho_Chi_Minh'
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return parseDate(`${values.year}-${values.month}-${values.day}`)
+}
 
 const requireScheduleInput = (body) => {
   const bookingDateInput = body.booking_date || body.bookingDate
@@ -211,15 +225,11 @@ const listAdminBookings = asyncHandler(async (req, res) => {
 
 const listStaffTodayBookings = asyncHandler(async (req, res) => {
   const user = await prisma.users.findUnique({ where: { user_id: getUserId(req) } })
-  const now = new Date()
-  const bookingDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+  const bookingDate = getTodayBookingDate()
 
   let stylistId = req.query.stylistId
   if (getUserRole(req) === 'STAFF') {
-    const staffMatches = [{ email: user?.email || undefined }, { phone: user?.phone || undefined }].filter(
-      (item) => Object.values(item)[0]
-    )
-    const stylist = staffMatches.length ? await prisma.stylists.findFirst({ where: { OR: staffMatches } }) : null
+    const stylist = await stylistService.ensureStaffStylist(user)
     stylistId = stylist?.stylist_id
   }
 

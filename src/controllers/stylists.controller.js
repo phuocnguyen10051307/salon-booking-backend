@@ -3,7 +3,8 @@ import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
 import ApiError from '../utils/ApiError.js'
-import { ok } from './helpers.js'
+import { stylistService } from '../services/stylist.service.js'
+import { getUserId, getUserRole, ok } from './helpers.js'
 
 const stylistData = (body) => ({
   full_name: body.full_name || body.fullName || body.name,
@@ -14,6 +15,24 @@ const stylistData = (body) => ({
   bio: body.bio,
   is_active: body.is_active ?? body.isActive,
 })
+
+const readServiceIds = (body) => {
+  const serviceIds = body.service_ids || body.serviceIds || body.services || body.service_id || body.serviceId
+  if (!serviceIds) return []
+  return (Array.isArray(serviceIds) ? serviceIds : [serviceIds]).map((id) => id?.toString()).filter(Boolean)
+}
+
+const getManagedStylistId = async (req) => {
+  if (getUserRole(req) === 'ADMIN') return req.params.id
+
+  const stylist = await stylistService.getStylistForStaffUser(getUserId(req))
+  if (!stylist) throw new ApiError(StatusCodes.NOT_FOUND, 'Staff stylist profile not found')
+  if (req.params.id && req.params.id !== stylist.stylist_id) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'Staff can only manage their own stylist services')
+  }
+
+  return stylist.stylist_id
+}
 
 const listStylists = asyncHandler(async (req, res) => {
   const stylists = await prisma.stylists.findMany({
@@ -56,17 +75,69 @@ const getStylistServices = asyncHandler(async (req, res) => {
   ok(res, 'Lay dich vu cua stylist thanh cong', { services: services.map((item) => item.services) })
 })
 
+const getMyStylist = asyncHandler(async (req, res) => {
+  const stylist = await stylistService.getStylistForStaffUser(getUserId(req))
+  if (!stylist) throw new ApiError(StatusCodes.NOT_FOUND, 'Staff stylist profile not found')
+  ok(res, 'Lay stylist cua staff thanh cong', { stylist })
+})
+
+const syncStaffStylists = asyncHandler(async (req, res) => {
+  const stylists = await stylistService.syncStaffUsersToStylists()
+  ok(res, 'Dong bo tai khoan staff thanh stylist thanh cong', { stylists, count: stylists.length })
+})
+
+const getMyStylistServices = asyncHandler(async (req, res) => {
+  const stylistId = await getManagedStylistId(req)
+  const services = await prisma.stylist_services.findMany({
+    where: { stylist_id: stylistId },
+    include: { services: true },
+  })
+  ok(res, 'Lay dich vu cua stylist thanh cong', { services: services.map((item) => item.services) })
+})
+
 const addStylistService = asyncHandler(async (req, res) => {
+  const stylistId = await getManagedStylistId(req)
   const serviceId = req.body.service_id || req.body.serviceId
-  const stylistService = await prisma.stylist_services.create({
-    data: { stylist_id: req.params.id, service_id: serviceId },
+  if (!serviceId) throw new ApiError(StatusCodes.BAD_REQUEST, 'Service id is required')
+
+  const stylistService = await prisma.stylist_services.upsert({
+    where: { stylist_id_service_id: { stylist_id: stylistId, service_id: serviceId } },
+    update: {},
+    create: { stylist_id: stylistId, service_id: serviceId },
   })
   ok(res, 'Them dich vu cho stylist thanh cong', { stylistService }, StatusCodes.CREATED)
 })
 
+const setStylistServices = asyncHandler(async (req, res) => {
+  const stylistId = await getManagedStylistId(req)
+  const serviceIds = [...new Set(readServiceIds(req.body))]
+  if (!serviceIds.length) throw new ApiError(StatusCodes.BAD_REQUEST, 'Service ids are required')
+
+  const services = await prisma.services.findMany({ where: { service_id: { in: serviceIds } } })
+  if (services.length !== serviceIds.length) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'One or more services are invalid')
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.stylist_services.deleteMany({ where: { stylist_id: stylistId } })
+    for (const serviceId of serviceIds) {
+      await tx.stylist_services.create({ data: { stylist_id: stylistId, service_id: serviceId } })
+    }
+  })
+
+  const stylistServices = await prisma.stylist_services.findMany({
+    where: { stylist_id: stylistId },
+    include: { services: true },
+  })
+  ok(res, 'Cap nhat day du dich vu cua stylist thanh cong', {
+    services: stylistServices.map((item) => item.services),
+  })
+})
+
 const removeStylistService = asyncHandler(async (req, res) => {
+  const stylistId = await getManagedStylistId(req)
   await prisma.stylist_services.delete({
-    where: { stylist_id_service_id: { stylist_id: req.params.id, service_id: req.params.serviceId } },
+    where: { stylist_id_service_id: { stylist_id: stylistId, service_id: req.params.serviceId } },
   })
   ok(res, 'Xoa dich vu khoi stylist thanh cong')
 })
@@ -75,9 +146,13 @@ export const stylistsController = {
   listStylists,
   getStylist,
   getStylistServices,
+  getMyStylist,
+  getMyStylistServices,
+  syncStaffStylists,
   createStylist,
   updateStylist,
   deleteStylist,
   addStylistService,
+  setStylistServices,
   removeStylistService,
 }

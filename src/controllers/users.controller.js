@@ -4,8 +4,22 @@ import bcrypt from 'bcrypt'
 
 import { prisma } from '../config/prisma.js'
 import { authService } from '../services/auth.service.js'
+import { stylistService } from '../services/stylist.service.js'
 import ApiError from '../utils/ApiError.js'
 import { getUserId, ok } from './helpers.js'
+
+const normalizeRole = (role) => {
+  const normalized = role?.toString().trim().toUpperCase()
+  return ['CUSTOMER', 'STAFF', 'ADMIN'].includes(normalized) ? normalized : undefined
+}
+
+const requestedRole = (body) => normalizeRole(body.role)
+
+const syncStylistIfStaff = async (user) => {
+  if (user.role?.toUpperCase() === 'STAFF') {
+    await stylistService.ensureStaffStylist(user)
+  }
+}
 
 const getProfile = asyncHandler(async (req, res) => {
   const user = await prisma.users.findUnique({ where: { user_id: getUserId(req) } })
@@ -23,6 +37,7 @@ const updateProfile = asyncHandler(async (req, res) => {
       updated_at: new Date(),
     },
   })
+  await syncStylistIfStaff(user)
   ok(res, 'Cap nhat ho so thanh cong', { user: authService.mapUserResponse(user) })
 })
 
@@ -57,10 +72,12 @@ const createAdminUser = asyncHandler(async (req, res) => {
       email: req.body.email,
       phone: req.body.phone,
       password_hash: await bcrypt.hash(req.body.password, 10),
+      role: requestedRole(req.body) || 'CUSTOMER',
       avatar_url: req.body.avatar_url || req.body.avatarUrl,
       is_active: req.body.is_active ?? req.body.isActive ?? true,
     },
   })
+  await syncStylistIfStaff(user)
   ok(res, 'Tao nguoi dung thanh cong', { user: authService.mapUserResponse(user) }, StatusCodes.CREATED)
 })
 
@@ -71,11 +88,13 @@ const updateAdminUser = asyncHandler(async (req, res) => {
       full_name: req.body.full_name || req.body.displayName || req.body.fullName,
       email: req.body.email,
       phone: req.body.phone,
+      role: requestedRole(req.body),
       avatar_url: req.body.avatar_url || req.body.avatarUrl,
       is_active: req.body.is_active ?? req.body.isActive,
       updated_at: new Date(),
     },
   })
+  await syncStylistIfStaff(user)
   ok(res, 'Cap nhat nguoi dung thanh cong', { user: authService.mapUserResponse(user) })
 })
 
@@ -84,6 +103,7 @@ const updateAdminUserStatus = asyncHandler(async (req, res) => {
     where: { user_id: req.params.id },
     data: { is_active: req.body.is_active ?? req.body.isActive, updated_at: new Date() },
   })
+  await syncStylistIfStaff(user)
   ok(res, 'Cap nhat trang thai nguoi dung thanh cong', { user: authService.mapUserResponse(user) })
 })
 
@@ -103,4 +123,3 @@ export const usersController = {
   updateAdminUserStatus,
   deleteAdminUser,
 }
-
