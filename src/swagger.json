@@ -392,6 +392,23 @@
         "responses": { "201": { "$ref": "#/components/responses/BookingOk" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
       }
     },
+    "/v1/bookings/staff/today": {
+      "get": {
+        "tags": ["Bookings"],
+        "summary": "List bookings for the current staff stylist on a selected date",
+        "description": "STAFF users receive bookings for their own stylist profile. ADMIN users can optionally pass stylistId to view a specific stylist's bookings. If date is omitted, the backend uses today based on the configured app timezone.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "date", "in": "query", "required": false, "schema": { "type": "string", "format": "date", "example": "2026-06-29" }, "description": "Optional booking date in YYYY-MM-DD format. Defaults to today in the app timezone." },
+          { "name": "stylistId", "in": "query", "required": false, "schema": { "type": "string", "format": "uuid" }, "description": "Optional for ADMIN. Ignored for STAFF because the backend uses the signed-in staff account." }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/BookingsOk" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
     "/v1/bookings/{id}": {
       "get": {
         "tags": ["Bookings"],
@@ -1363,3 +1380,5 @@
     }
   }
 }
+
+

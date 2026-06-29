@@ -31,6 +31,11 @@ const getTodayBookingDate = () => {
   return parseDate(`${values.year}-${values.month}-${values.day}`)
 }
 
+const getRequestedBookingDate = (value) => {
+  if (!value) return getTodayBookingDate()
+  return parseDate(value)
+}
+
 const requireScheduleInput = (body) => {
   const bookingDateInput = body.booking_date || body.bookingDate
   const bookingTimeInput = body.booking_time || body.bookingTime
@@ -225,7 +230,7 @@ const listAdminBookings = asyncHandler(async (req, res) => {
 
 const listStaffTodayBookings = asyncHandler(async (req, res) => {
   const user = await prisma.users.findUnique({ where: { user_id: getUserId(req) } })
-  const bookingDate = getTodayBookingDate()
+  const bookingDate = getRequestedBookingDate(req.query.date)
 
   let stylistId = req.query.stylistId
   if (getUserRole(req) === 'STAFF') {
@@ -324,3 +329,4 @@ export const bookingsController = {
   rescheduleBooking,
   getBookingReschedules,
 }
+
