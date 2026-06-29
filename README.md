@@ -157,7 +157,7 @@ GET    /v1/categories
 GET    /v1/services
 GET    /v1/stylists
 GET    /v1/promotions
-GET    /v1/locations
+GET    /v1/locations        # L?y d?a ch? salon ch�nh
 
 GET    /v1/cart
 POST   /v1/cart/items
@@ -190,3 +190,4 @@ npm run format   # Format code bằng Prettier
 - Refresh token được lưu trong cookie tên `refreshToken`.
 - Nếu frontend và backend chạy khác origin, cần kiểm tra cấu hình CORS trong `src/config/cors.js`.
 - File Swagger được load từ `src/swagger.json`, nên sau khi sửa tài liệu chỉ cần restart server để Swagger UI nhận bản mới.
+

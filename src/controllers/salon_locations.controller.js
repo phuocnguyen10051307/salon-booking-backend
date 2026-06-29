@@ -43,13 +43,19 @@ const mapLocationResponse = (location) => ({
   longitude: location.longitude === null || location.longitude === undefined ? null : Number(location.longitude),
 })
 
-const listLocations = asyncHandler(async (req, res) => {
-  const locations = await prisma.salon_locations.findMany({ orderBy: { created_at: 'desc' } })
-  ok(res, 'Lay danh sach chi nhanh thanh cong', { locations })
+const getSingletonLocation = () =>
+  prisma.salon_locations.findFirst({
+    orderBy: { created_at: 'desc' },
+  })
+
+const getLocation = asyncHandler(async (req, res) => {
+  const location = await getSingletonLocation()
+  if (!location) throw new ApiError(StatusCodes.NOT_FOUND, 'Location not found')
+  ok(res, 'Lay dia chi salon thanh cong', { location })
 })
 
-const listMapLocations = asyncHandler(async (req, res) => {
-  const locations = await prisma.salon_locations.findMany({
+const getMapLocation = asyncHandler(async (req, res) => {
+  const location = await prisma.salon_locations.findFirst({
     where: {
       latitude: { not: null },
       longitude: { not: null },
@@ -57,40 +63,63 @@ const listMapLocations = asyncHandler(async (req, res) => {
     orderBy: { created_at: 'desc' },
   })
 
-  ok(res, 'Lay vi tri ban do thanh cong', { locations: locations.map(mapLocationResponse) })
-})
-
-const getLocation = asyncHandler(async (req, res) => {
-  const location = await prisma.salon_locations.findUnique({ where: { location_id: req.params.id } })
   if (!location) throw new ApiError(StatusCodes.NOT_FOUND, 'Location not found')
-  ok(res, 'Lay chi nhanh thanh cong', { location })
+  ok(res, 'Lay vi tri salon thanh cong', { location: mapLocationResponse(location) })
 })
 
 const createLocation = asyncHandler(async (req, res) => {
   const data = locationData(req.body)
+  const existingLocation = await getSingletonLocation()
+  if (existingLocation) {
+    throw new ApiError(StatusCodes.CONFLICT, 'Salon location already exists')
+  }
+
   if (data.latitude === undefined || data.longitude === undefined) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'latitude and longitude are required')
   }
 
   const location = await prisma.salon_locations.create({ data })
-  ok(res, 'Tao chi nhanh thanh cong', { location }, StatusCodes.CREATED)
+  ok(res, 'Tao dia chi salon thanh cong', { location }, StatusCodes.CREATED)
 })
 
 const updateLocation = asyncHandler(async (req, res) => {
   const data = Object.fromEntries(Object.entries(locationData(req.body)).filter(([, value]) => value !== undefined))
-  const location = await prisma.salon_locations.update({ where: { location_id: req.params.id }, data })
-  ok(res, 'Cap nhat chi nhanh thanh cong', { location })
+  const existingLocation = await getSingletonLocation()
+
+  if (!existingLocation) {
+    if (data.latitude === undefined || data.longitude === undefined) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'latitude and longitude are required to create the salon location')
+    }
+
+    const location = await prisma.salon_locations.create({ data })
+    return ok(res, 'Tao dia chi salon thanh cong', { location }, StatusCodes.CREATED)
+  }
+
+  const location = await prisma.salon_locations.update({
+    where: { location_id: existingLocation.location_id },
+    data,
+  })
+
+  await prisma.salon_locations.deleteMany({
+    where: {
+      NOT: { location_id: existingLocation.location_id },
+    },
+  })
+
+  ok(res, 'Cap nhat dia chi salon thanh cong', { location })
 })
 
 const deleteLocation = asyncHandler(async (req, res) => {
-  await prisma.salon_locations.delete({ where: { location_id: req.params.id } })
-  ok(res, 'Xoa chi nhanh thanh cong')
+  const existingLocation = await getSingletonLocation()
+  if (!existingLocation) throw new ApiError(StatusCodes.NOT_FOUND, 'Location not found')
+
+  await prisma.salon_locations.deleteMany()
+  ok(res, 'Xoa dia chi salon thanh cong')
 })
 
 export const salonLocationsController = {
-  listLocations,
-  listMapLocations,
   getLocation,
+  getMapLocation,
   createLocation,
   updateLocation,
   deleteLocation,

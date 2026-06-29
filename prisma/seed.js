@@ -139,24 +139,6 @@ const locations = [
     latitude: 10.754792,
     longitude: 106.666023,
   },
-  {
-    location_id: '30000000-0000-4000-8000-000000000002',
-    salon_name: 'Luxe Spa and Nails',
-    address: '45 Le Loi, District 1, HCMC',
-    hotline: '19001002',
-    opening_hours: '09:00 - 22:00',
-    latitude: 10.776889,
-    longitude: 106.700806,
-  },
-  {
-    location_id: '30000000-0000-4000-8000-000000000003',
-    salon_name: 'Modern Men Barbershop',
-    address: '12 Nguyen Thi Minh Khai, District 3, HCMC',
-    hotline: '19001003',
-    opening_hours: '08:30 - 20:30',
-    latitude: 10.78331,
-    longitude: 106.695834,
-  },
 ]
 
 const promotions = [
@@ -251,3 +233,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect()
   })
+
