@@ -20,6 +20,7 @@ export const bookingInclude = {
   stylists: true,
   booking_items: { include: { services: true } },
   booking_reschedules: true,
+  billings: true,
 }
 
 export const billingInclude = {

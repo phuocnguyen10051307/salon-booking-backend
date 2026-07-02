@@ -7,12 +7,14 @@ const Router = express.Router()
 const protectedRoute = authMiddleware.protectedRoute
 const customerOnly = authMiddleware.requireRoles('CUSTOMER')
 const adminOnly = authMiddleware.requireRoles('ADMIN')
+const staffOrAdmin = authMiddleware.requireRoles('STAFF', 'ADMIN')
 
 Router.get('/', protectedRoute, customerOnly, billingsController.listBillings)
 Router.post('/', protectedRoute, customerOnly, billingsController.createBilling)
 Router.get('/booking/:bookingId', protectedRoute, customerOnly, billingsController.getBillingByBooking)
 Router.get('/:id', protectedRoute, customerOnly, billingsController.getBilling)
-Router.patch('/:id/pay', protectedRoute, customerOnly, billingsController.payBilling)
+Router.patch('/booking/:bookingId/pay', protectedRoute, staffOrAdmin, billingsController.collectBookingPayment)
+Router.patch('/:id/pay', protectedRoute, staffOrAdmin, billingsController.collectBillingPayment)
 Router.patch('/:id/status', protectedRoute, adminOnly, billingsController.updateBillingStatus)
 
 export const billingRoute = Router

@@ -16,7 +16,6 @@ import {
   parseTime,
 } from './helpers.js'
 
-const normalizePaymentMethod = (value) => (value ? value.toUpperCase() : 'CASH')
 
 const getTodayBookingDate = () => {
   const timeZone = process.env.APP_TIME_ZONE || 'Asia/Ho_Chi_Minh'
@@ -130,7 +129,7 @@ const createBooking = asyncHandler(async (req, res) => {
   const cartItemIds = normalizeCartItemIds(req.body.cart_item_ids || req.body.cartItemIds)
   const { items, totalAmount } = await resolveBookingItems(userId, req.body.items || [], cartItemIds)
 
-  const booking = await prisma.$transaction(async (tx) => {
+  const bookingId = await prisma.$transaction(async (tx) => {
     const createdBooking = await tx.bookings.create({
       data: {
         booking_code: req.body.booking_code || req.body.bookingCode || createBookingCode(),
@@ -148,11 +147,15 @@ const createBooking = asyncHandler(async (req, res) => {
           })),
         },
       },
-      include: bookingInclude,
     })
 
     await clearUserCart(tx, userId, cartItemIds)
-    return createdBooking
+    return createdBooking.booking_id
+  })
+
+  const booking = await prisma.bookings.findUnique({
+    where: { booking_id: bookingId },
+    include: bookingInclude,
   })
 
   ok(res, 'Tao lich dat thanh cong', { booking }, StatusCodes.CREATED)
@@ -163,7 +166,6 @@ const checkoutBooking = asyncHandler(async (req, res) => {
   const { bookingDate, bookingTime } = requireScheduleInput(req.body)
   const cartItemIds = normalizeCartItemIds(req.body.cart_item_ids || req.body.cartItemIds)
   const { items, totalAmount } = await resolveBookingItems(userId, req.body.items || [], cartItemIds)
-  const paymentMethod = normalizePaymentMethod(req.body.payment_method || req.body.paymentMethod)
   const discountAmount = Math.max(Number(req.body.discount_amount || req.body.discountAmount || 0), 0)
 
   const result = await prisma.$transaction(async (tx) => {
@@ -184,7 +186,6 @@ const checkoutBooking = asyncHandler(async (req, res) => {
           })),
         },
       },
-      include: bookingInclude,
     })
 
     const billing = await tx.billings.create({
@@ -195,18 +196,28 @@ const checkoutBooking = asyncHandler(async (req, res) => {
         subtotal: totalAmount,
         discount_amount: discountAmount,
         total_amount: Math.max(totalAmount - discountAmount, 0),
-        payment_method: paymentMethod,
+        payment_method: null,
         status: 'UNPAID',
       },
-      include: billingInclude,
     })
 
     await clearUserCart(tx, userId, cartItemIds)
 
-    return { booking, billing }
+    return { bookingId: booking.booking_id, billingId: billing.billing_id }
   })
 
-  ok(res, 'Tao lich dat va hoa don thanh cong', result, StatusCodes.CREATED)
+  const [booking, billing] = await Promise.all([
+    prisma.bookings.findUnique({
+      where: { booking_id: result.bookingId },
+      include: bookingInclude,
+    }),
+    prisma.billings.findUnique({
+      where: { billing_id: result.billingId },
+      include: billingInclude,
+    }),
+  ])
+
+  ok(res, 'Tao lich dat va hoa don thanh cong', { booking, billing }, StatusCodes.CREATED)
 })
 
 const listBookings = asyncHandler(async (req, res) => {

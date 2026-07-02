@@ -4,9 +4,9 @@ import { StatusCodes } from 'http-status-codes'
 import { prisma } from '../config/prisma.js'
 import ApiError from '../utils/ApiError.js'
 import { billingInclude, createBillingCode, getUserId, getUserRole, ok } from './helpers.js'
+import { stylistService } from '../services/stylist.service.js'
 
 const normalizePaymentMethod = (value) => (value ? value.toUpperCase() : 'CASH')
-const normalizeBillingStatus = (value) => (value ? value.toUpperCase() : 'UNPAID')
 
 const calculateSubtotal = (booking) => {
   if (booking.total_amount !== null && booking.total_amount !== undefined) return Number(booking.total_amount)
@@ -61,8 +61,8 @@ const createBilling = asyncHandler(async (req, res) => {
       subtotal,
       discount_amount: discountAmount,
       total_amount: totalAmount,
-      payment_method: normalizePaymentMethod(req.body.payment_method || req.body.paymentMethod),
-      status: normalizeBillingStatus(req.body.status),
+      payment_method: null,
+      status: 'UNPAID',
     },
     include: billingInclude,
   })
@@ -88,25 +88,61 @@ const getBillingByBooking = asyncHandler(async (req, res) => {
   ok(res, 'Lay hoa don theo lich dat thanh cong', { billing })
 })
 
-const payBilling = asyncHandler(async (req, res) => {
-  const existing = await prisma.billings.findFirst({
-    where: { billing_id: req.params.id, user_id: getUserId(req) },
+const findStaffOrAdminBilling = async (req, where) => {
+  const role = getUserRole(req)
+  const billing = await prisma.billings.findFirst({
+    where,
+    include: { bookings: true },
   })
-  if (!existing) throw new ApiError(StatusCodes.NOT_FOUND, 'Billing not found')
+  if (!billing) throw new ApiError(StatusCodes.NOT_FOUND, 'Billing not found')
+
+  if (role === 'STAFF') {
+    const user = await prisma.users.findUnique({ where: { user_id: getUserId(req) } })
+    const stylist = await stylistService.ensureStaffStylist(user)
+    if (!stylist || billing.bookings?.stylist_id !== stylist.stylist_id) {
+      throw new ApiError(StatusCodes.FORBIDDEN, 'You can only collect payment for your own bookings')
+    }
+  }
+
+  return billing
+}
+
+const collectPayment = async (existing, paymentMethod) => {
   if (existing.status === 'PAID') throw new ApiError(StatusCodes.BAD_REQUEST, 'Billing is already paid')
 
-  const billing = await prisma.billings.update({
-    where: { billing_id: req.params.id },
-    data: {
-      status: 'PAID',
-      payment_method: normalizePaymentMethod(req.body.payment_method || req.body.paymentMethod || existing.payment_method),
-      paid_at: new Date(),
-      updated_at: new Date(),
-    },
-    include: billingInclude,
-  })
+  return prisma.$transaction(async (tx) => {
+    const billing = await tx.billings.update({
+      where: { billing_id: existing.billing_id },
+      data: {
+        status: 'PAID',
+        payment_method: normalizePaymentMethod(paymentMethod),
+        paid_at: new Date(),
+        updated_at: new Date(),
+      },
+      include: billingInclude,
+    })
 
-  ok(res, 'Thanh toan hoa don thanh cong', { billing })
+    await tx.bookings.update({
+      where: { booking_id: existing.booking_id },
+      data: { status: 'COMPLETED', updated_at: new Date() },
+    })
+
+    return billing
+  })
+}
+
+const collectBillingPayment = asyncHandler(async (req, res) => {
+  const existing = await findStaffOrAdminBilling(req, { billing_id: req.params.id })
+  const billing = await collectPayment(existing, req.body.payment_method || req.body.paymentMethod)
+
+  ok(res, 'Thu tien hoa don thanh cong', { billing })
+})
+
+const collectBookingPayment = asyncHandler(async (req, res) => {
+  const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
+  const billing = await collectPayment(existing, req.body.payment_method || req.body.paymentMethod)
+
+  ok(res, 'Thu tien hoa don thanh cong', { billing })
 })
 
 const updateBillingStatus = asyncHandler(async (req, res) => {
@@ -116,7 +152,7 @@ const updateBillingStatus = asyncHandler(async (req, res) => {
   const existing = await prisma.billings.findFirst({ where })
   if (!existing) throw new ApiError(StatusCodes.NOT_FOUND, 'Billing not found')
 
-  const status = normalizeBillingStatus(req.body.status)
+  const status = req.body.status ? req.body.status.toUpperCase() : 'UNPAID'
   const billing = await prisma.billings.update({
     where: { billing_id: req.params.id },
     data: {
@@ -135,6 +171,7 @@ export const billingsController = {
   createBilling,
   getBilling,
   getBillingByBooking,
-  payBilling,
+  collectBillingPayment,
+  collectBookingPayment,
   updateBillingStatus,
 }
