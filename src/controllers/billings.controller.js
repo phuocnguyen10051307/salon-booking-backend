@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
 import ApiError from '../utils/ApiError.js'
+import { getPromotionId, resolvePromotionDiscount } from '../services/promotion.service.js'
 import { billingInclude, createBillingCode, getUserId, getUserRole, ok } from './helpers.js'
 import { stylistService } from '../services/stylist.service.js'
 
@@ -50,7 +51,12 @@ const createBilling = asyncHandler(async (req, res) => {
 
   const booking = await findUserBooking(bookingId, userId)
   const subtotal = calculateSubtotal(booking)
-  const discountAmount = Number(req.body.discount_amount || req.body.discountAmount || 0)
+  const promotionId = getPromotionId(req.body)
+  const { discountAmount } = await resolvePromotionDiscount({
+    promotionId,
+    items: booking.booking_items,
+    subtotal,
+  })
   const totalAmount = Math.max(subtotal - discountAmount, 0)
 
   const billing = await prisma.billings.create({
@@ -58,6 +64,7 @@ const createBilling = asyncHandler(async (req, res) => {
       billing_code: req.body.billing_code || req.body.billingCode || createBillingCode(),
       booking_id: booking.booking_id,
       user_id: userId,
+      promotion_id: promotionId,
       subtotal,
       discount_amount: discountAmount,
       total_amount: totalAmount,
@@ -153,14 +160,25 @@ const updateBillingStatus = asyncHandler(async (req, res) => {
   if (!existing) throw new ApiError(StatusCodes.NOT_FOUND, 'Billing not found')
 
   const status = req.body.status ? req.body.status.toUpperCase() : 'UNPAID'
-  const billing = await prisma.billings.update({
-    where: { billing_id: req.params.id },
-    data: {
-      status,
-      paid_at: status === 'PAID' ? existing.paid_at || new Date() : existing.paid_at,
-      updated_at: new Date(),
-    },
-    include: billingInclude,
+  const billing = await prisma.$transaction(async (tx) => {
+    const updatedBilling = await tx.billings.update({
+      where: { billing_id: req.params.id },
+      data: {
+        status,
+        paid_at: status === 'PAID' ? existing.paid_at || new Date() : existing.paid_at,
+        updated_at: new Date(),
+      },
+      include: billingInclude,
+    })
+
+    if (status === 'PAID') {
+      await tx.bookings.update({
+        where: { booking_id: existing.booking_id },
+        data: { status: 'COMPLETED', updated_at: new Date() },
+      })
+    }
+
+    return updatedBilling
   })
 
   ok(res, 'Cap nhat trang thai hoa don thanh cong', { billing })
@@ -175,3 +193,5 @@ export const billingsController = {
   collectBookingPayment,
   updateBillingStatus,
 }
+
+

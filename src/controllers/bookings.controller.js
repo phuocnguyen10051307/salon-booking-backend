@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
 import ApiError from '../utils/ApiError.js'
+import { getPromotionId, resolvePromotionDiscount } from '../services/promotion.service.js'
 import { stylistService } from '../services/stylist.service.js'
 import {
   billingInclude,
@@ -166,7 +167,12 @@ const checkoutBooking = asyncHandler(async (req, res) => {
   const { bookingDate, bookingTime } = requireScheduleInput(req.body)
   const cartItemIds = normalizeCartItemIds(req.body.cart_item_ids || req.body.cartItemIds)
   const { items, totalAmount } = await resolveBookingItems(userId, req.body.items || [], cartItemIds)
-  const discountAmount = Math.max(Number(req.body.discount_amount || req.body.discountAmount || 0), 0)
+  const promotionId = getPromotionId(req.body)
+  const { discountAmount } = await resolvePromotionDiscount({
+    promotionId,
+    items,
+    subtotal: totalAmount,
+  })
 
   const result = await prisma.$transaction(async (tx) => {
     const booking = await tx.bookings.create({
@@ -193,6 +199,7 @@ const checkoutBooking = asyncHandler(async (req, res) => {
         billing_code: req.body.billing_code || req.body.billingCode || createBillingCode(),
         booking_id: booking.booking_id,
         user_id: userId,
+        promotion_id: promotionId,
         subtotal: totalAmount,
         discount_amount: discountAmount,
         total_amount: Math.max(totalAmount - discountAmount, 0),

@@ -9,11 +9,10 @@ const adminOnly = authMiddleware.requireRoles('ADMIN')
 
 Router.get('/', promotionsController.listPromotions)
 Router.get('/active', promotionsController.listActivePromotions)
+Router.get('/active/service/:serviceId', promotionsController.listActivePromotionsByService)
 Router.get('/:id', promotionsController.getPromotion)
 Router.post('/', protectedRoute, adminOnly, promotionsController.createPromotion)
 Router.put('/:id', protectedRoute, adminOnly, promotionsController.updatePromotion)
 Router.delete('/:id', protectedRoute, adminOnly, promotionsController.deletePromotion)
 
 export const promotionsRoute = Router
-
-

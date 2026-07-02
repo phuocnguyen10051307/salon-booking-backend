@@ -21,14 +21,25 @@ export const bookingInclude = {
   booking_items: { include: { services: true } },
   booking_reschedules: true,
   billings: true,
+  service_reviews: true,
 }
 
 export const billingInclude = {
   users: true,
+  promotions: true,
   bookings: {
     include: {
       stylists: true,
       booking_items: { include: { services: true } },
+      service_reviews: { include: { services: true, users: true } },
+    },
+  },
+}
+
+export const promotionInclude = {
+  promotion_services: {
+    include: {
+      services: true,
     },
   },
 }
@@ -36,4 +47,3 @@ export const billingInclude = {
 export const createBookingCode = () => `BK${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`
 
 export const createBillingCode = () => `BL${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`
-

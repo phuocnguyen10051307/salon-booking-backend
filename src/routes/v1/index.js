@@ -11,6 +11,7 @@ import { chatRoute } from './chat.route.js'
 import { locationsRoute } from './locations.route.js'
 import { notificationsRoute } from './notifications.route.js'
 import { promotionsRoute } from './promotions.route.js'
+import { reviewsRoute } from './reviews.route.js'
 import { servicesRoute } from './services.route.js'
 import { sessionsRoute } from './sessions.route.js'
 import { stylistsRoute } from './stylists.route.js'
@@ -36,9 +37,11 @@ Router.use('/bookings', bookingsRoute)
 Router.use('/billing', billingRoute)
 Router.use('/notifications', notificationsRoute)
 Router.use('/promotions', promotionsRoute)
+Router.use('/reviews', reviewsRoute)
 Router.use('/locations', locationsRoute)
 Router.use('/sessions', sessionsRoute)
 Router.use('/chat', chatRoute)
 Router.use('/admin', adminRoute)
 
 export const APIs_V1 = Router
+

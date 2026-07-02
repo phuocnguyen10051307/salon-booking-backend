@@ -150,6 +150,7 @@ const promotions = [
     start_date: new Date('2026-01-01T00:00:00.000Z'),
     end_date: new Date('2026-12-31T00:00:00.000Z'),
     is_active: true,
+    scope: 'ALL_SERVICES',
   },
   {
     promotion_id: '40000000-0000-4000-8000-000000000002',
@@ -159,6 +160,15 @@ const promotions = [
     start_date: new Date('2026-06-01T00:00:00.000Z'),
     end_date: new Date('2026-08-31T00:00:00.000Z'),
     is_active: true,
+    scope: 'SELECTED_SERVICES',
+    service_ids: [
+      '10000000-0000-4000-8000-000000000012',
+      '10000000-0000-4000-8000-000000000013',
+      '10000000-0000-4000-8000-000000000014',
+      '10000000-0000-4000-8000-000000000015',
+      '10000000-0000-4000-8000-000000000016',
+      '10000000-0000-4000-8000-000000000017',
+    ],
   },
 ]
 
@@ -196,11 +206,26 @@ const main = async () => {
   }
 
   for (const promotion of promotions) {
+    const { service_ids = [], ...promotionData } = promotion
+
     await prisma.promotions.upsert({
       where: { promotion_id: promotion.promotion_id },
-      update: promotion,
-      create: promotion,
+      update: promotionData,
+      create: promotionData,
     })
+
+    await prisma.promotion_services.deleteMany({
+      where: { promotion_id: promotion.promotion_id },
+    })
+
+    if (promotionData.scope === 'SELECTED_SERVICES' && service_ids.length) {
+      await prisma.promotion_services.createMany({
+        data: service_ids.map((service_id) => ({
+          promotion_id: promotion.promotion_id,
+          service_id,
+        })),
+      })
+    }
   }
 
   for (const [index, service] of services.entries()) {
@@ -233,4 +258,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect()
   })
-
