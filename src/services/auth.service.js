@@ -161,11 +161,9 @@ const signin = async (userData) => {
   let user = null
   if (loginIdentifier.includes('@')) {
     user = await prisma.users.findUnique({ where: { email: loginIdentifier } })
-    console.log('User found by email:', user)
   }
   if (!user) {
     user = await prisma.users.findUnique({ where: { phone: loginIdentifier } })
-    console.log('User found by phone:', user)
   }
   if (!user) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid email or phone')
@@ -176,7 +174,6 @@ const signin = async (userData) => {
   }
 
   const isMatch = await bcrypt.compare(password, user.password_hash)
-  console.log('Password match:', isMatch)
   if (!isMatch) {
     throw new ApiError(StatusCodes.UNAUTHORIZED, 'Invalid email or phone or password')
   }

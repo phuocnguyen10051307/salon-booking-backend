@@ -2022,6 +2022,77 @@
                                                                          }
                                                        }
                                         },
+                  "/v1/chat/conversations":  {
+                                                 "post":  {
+                                                              "tags":  [ "Chat" ],
+                                                              "summary":  "Get or create the current customer support conversation",
+                                                              "security":  [ { "bearerAuth":  [ ] } ],
+                                                              "responses":  {
+                                                                                "201":  { "description":  "Conversation returned" },
+                                                                                "401":  { "$ref":  "#/components/responses/Unauthorized" },
+                                                                                "403":  { "description":  "Customer role required" }
+                                                                            }
+                                                          },
+                                                 "get":  {
+                                                             "tags":  [ "Chat" ],
+                                                             "summary":  "List accessible conversations",
+                                                             "security":  [ { "bearerAuth":  [ ] } ],
+                                                             "parameters":  [
+                                                                                { "name":  "cursor", "in":  "query", "schema":  { "type":  "string" } },
+                                                                                { "name":  "limit", "in":  "query", "schema":  { "type":  "integer", "minimum":  1, "maximum":  50 } }
+                                                                            ],
+                                                             "responses":  {
+                                                                               "200":  { "description":  "Paginated conversation list" },
+                                                                               "401":  { "$ref":  "#/components/responses/Unauthorized" }
+                                                                           }
+                                                         }
+                                             },
+                  "/v1/chat/conversations/{id}/messages":  {
+                                                               "get":  {
+                                                                           "tags":  [ "Chat" ],
+                                                                           "summary":  "Get paginated message history",
+                                                                           "security":  [ { "bearerAuth":  [ ] } ],
+                                                                           "parameters":  [
+                                                                                              { "name":  "id", "in":  "path", "required":  true, "schema":  { "type":  "string", "format":  "uuid" } },
+                                                                                              { "name":  "before", "in":  "query", "schema":  { "type":  "string", "format":  "uuid" } },
+                                                                                              { "name":  "limit", "in":  "query", "schema":  { "type":  "integer", "minimum":  1, "maximum":  100 } }
+                                                                                          ],
+                                                                           "responses":  {
+                                                                                             "200":  { "description":  "Chronological message page" },
+                                                                                             "403":  { "description":  "Conversation access denied" },
+                                                                                             "404":  { "description":  "Conversation not found" }
+                                                                                         }
+                                                                       }
+                                                           },
+                  "/v1/chat/conversations/{id}/read":  {
+                                                           "patch":  {
+                                                                           "tags":  [ "Chat" ],
+                                                                           "summary":  "Advance the participant read position",
+                                                                           "security":  [ { "bearerAuth":  [ ] } ],
+                                                                           "parameters":  [
+                                                                                              { "name":  "id", "in":  "path", "required":  true, "schema":  { "type":  "string", "format":  "uuid" } }
+                                                                                          ],
+                                                                           "requestBody":  {
+                                                                                               "required":  true,
+                                                                                               "content":  {
+                                                                                                               "application/json":  {
+                                                                                                                                         "schema":  {
+                                                                                                                                                        "type":  "object",
+                                                                                                                                                        "required":  [ "messageId" ],
+                                                                                                                                                        "properties":  {
+                                                                                                                                                                           "messageId":  { "type":  "string", "format":  "uuid" }
+                                                                                                                                                                       }
+                                                                                                                                                    }
+                                                                                                                                     }
+                                                                                                           }
+                                                                                           },
+                                                                           "responses":  {
+                                                                                             "200":  { "description":  "Read receipt returned and broadcast" },
+                                                                                             "403":  { "description":  "Conversation access denied" },
+                                                                                             "404":  { "description":  "Message not found" }
+                                                                                         }
+                                                                       }
+                                                       },
                   "/v1/chat/messages":  {
                                             "get":  {
                                                         "tags":  [

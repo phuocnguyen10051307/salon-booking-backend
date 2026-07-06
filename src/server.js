@@ -6,14 +6,18 @@ import exitHook from 'async-exit-hook'
 import cookieParser from 'cookie-parser'
 import swaggerUi from 'swagger-ui-express'
 import fs from 'fs'
+import { createServer } from 'http'
 
 import { env } from './config/environment.js'
 import { closeDB, connectDB } from './config/database.js'
 import { APIs_V1 } from './routes/v1/index.js'
 import { corsOptions } from './config/cors.js'
 import { errorHandlingMiddleware } from './middlewares/error.middleware.js'
+import { initializeSocketServer } from './socket/chat.socket.js'
 
 const app = express()
+const httpServer = createServer(app)
+const io = initializeSocketServer(httpServer)
 
 const HOST = env.HOST
 const PORT = env.PORT
@@ -38,12 +42,14 @@ app.use(errorHandlingMiddleware)
 
 // Start the server
 const START_SERVER = () => {
-  app.listen(PORT, HOST, () => {
+  httpServer.listen(PORT, HOST, () => {
     console.log(`Server is running on http://${HOST}:${PORT}`)
   })
 }
 
 exitHook((callback) => {
+  io.close()
+  httpServer.close()
   closeDB()
     .then(() => {
       console.log('Disconnected from database successfully')
