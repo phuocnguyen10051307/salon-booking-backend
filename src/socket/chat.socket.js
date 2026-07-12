@@ -10,23 +10,10 @@ import { chatService } from '../services/chat.service.js'
 import ApiError from '../utils/ApiError.js'
 
 const conversationPayload = z.object({ conversationId: z.string().uuid() })
-const sendPayload = conversationPayload.extend({
-  clientMessageId: z.string().min(1).max(100),
-  content: z.string().min(1),
-})
-const readPayload = conversationPayload.extend({ messageId: z.string().uuid() })
+const sendPayload = conversationPayload.extend({ content: z.string() })
 
-const roomName = (conversationId) => `conversation:${conversationId}`
-
-const socketError = (error, event = null, conversationId = null) => {
-  const payload = {
-    code: error.code || 'INTERNAL_ERROR',
-    message: error.code ? error.message : 'Internal server error',
-    ...(event ? { event } : {}),
-    ...(conversationId ? { conversationId } : {}),
-  }
-  return payload
-}
+const conversationRoom = (conversationId) => `conversation:${conversationId}`
+const userRoom = (userId) => `user:${userId}`
 
 const parse = (schema, payload) => {
   const result = schema.safeParse(payload)
@@ -36,56 +23,48 @@ const parse = (schema, payload) => {
   return result.data
 }
 
+const safeMessage = (error) => (error instanceof ApiError ? error.message : 'Internal server error')
+
 const registerAcknowledgedEvent = (socket, event, handler) => {
   socket.on(event, async (payload = {}, acknowledge) => {
     try {
       const data = await handler(payload)
-      if (typeof acknowledge === 'function') acknowledge({ ok: true, data })
+      if (typeof acknowledge === 'function') acknowledge({ success: true, data })
     } catch (error) {
-      const response = socketError(error, event, payload?.conversationId)
-      if (typeof acknowledge === 'function') {
-        acknowledge({ ok: false, error: response })
-      } else {
-        socket.emit('error', response)
-      }
+      if (!(error instanceof ApiError)) console.error(`Socket ${event} failed:`, error)
+      const response = { success: false, message: safeMessage(error) }
+      if (typeof acknowledge === 'function') acknowledge(response)
+      else socket.emit('message:error', { ...response, event })
     }
   })
+}
+
+const authenticationError = (code, message) => {
+  const error = new Error(message)
+  error.data = { code, message }
+  return error
 }
 
 const authenticateSocket = async (socket, next) => {
   try {
     const rawToken = socket.handshake.auth?.token
     const token = rawToken?.toString().replace(/^Bearer\s+/i, '')
-    if (!token) {
-      const error = new Error('Access token is required')
-      error.data = { code: 'AUTH_REQUIRED', message: error.message }
-      return next(error)
-    }
+    if (!token) return next(authenticationError('AUTH_REQUIRED', 'Access token is required'))
+
     const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET)
     const user = await prisma.users.findUnique({ where: { user_id: decoded._id } })
-    if (!user?.is_active) {
-      const error = new Error('User is not available')
-      error.data = { code: 'INVALID_TOKEN', message: error.message }
-      return next(error)
-    }
+    if (!user?.is_active) return next(authenticationError('INVALID_TOKEN', 'User is not available'))
+
     const mappedUser = authService.mapUserResponse(user)
-    try {
-      chatService.assertChatRole(mappedUser)
-    } catch {
-      const error = new Error('Chat is available only to customers and staff')
-      error.data = { code: 'ROLE_FORBIDDEN', message: error.message }
-      return next(error)
-    }
+    chatService.assertChatRole(mappedUser)
     socket.data.user = mappedUser
     return next()
   } catch (error) {
-    const isExpired = error.name === 'TokenExpiredError'
-    const socketAuthError = new Error(isExpired ? 'Access token expired' : 'Invalid access token')
-    socketAuthError.data = {
-      code: isExpired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN',
-      message: socketAuthError.message,
+    if (error.code === 'ROLE_FORBIDDEN') {
+      return next(authenticationError('ROLE_FORBIDDEN', error.message))
     }
-    return next(socketAuthError)
+    const expired = error.name === 'TokenExpiredError'
+    return next(authenticationError(expired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN', expired ? 'Access token expired' : 'Invalid access token'))
   }
 }
 
@@ -95,45 +74,35 @@ const registerChatHandlers = (io, socket) => {
   registerAcknowledgedEvent(socket, 'conversation:join', async (payload) => {
     const { conversationId } = parse(conversationPayload, payload)
     const conversation = await chatService.getConversation(conversationId, user, { join: true })
-    await socket.join(roomName(conversationId))
+    await socket.join(conversationRoom(conversationId))
     return { conversation }
   })
 
   registerAcknowledgedEvent(socket, 'conversation:leave', async (payload) => {
     const { conversationId } = parse(conversationPayload, payload)
-    await socket.leave(roomName(conversationId))
+    await socket.leave(conversationRoom(conversationId))
     return { conversationId }
   })
 
   registerAcknowledgedEvent(socket, 'message:send', async (payload) => {
     const data = parse(sendPayload, payload)
-    const message = await chatService.sendMessage(data.conversationId, user, data)
-    await socket.join(roomName(data.conversationId))
-    io.to(roomName(data.conversationId)).to('staff:inbox').emit('message:new', { message })
-    const conversation = await chatService.getConversation(data.conversationId, user)
-    io.to('staff:inbox').emit('conversation:updated', { conversation })
-    return { message }
-  })
+    const message = await chatService.sendMessage(data.conversationId, user, data.content)
+    await socket.join(conversationRoom(data.conversationId))
+    io.to(conversationRoom(data.conversationId)).emit('message:new', { message })
 
-  registerAcknowledgedEvent(socket, 'message:read', async (payload) => {
-    const { conversationId, messageId } = parse(readPayload, payload)
-    const receipt = await chatService.markRead(conversationId, user, messageId)
-    await socket.join(roomName(conversationId))
-    io.to(roomName(conversationId)).emit('message:read', receipt)
-    return { receipt }
+    const conversation = await chatService.getConversation(data.conversationId, user)
+    io.to('staff:inbox').to(userRoom(conversation.customer.id)).emit('conversation:updated', { conversation })
+    return { message }
   })
 
   for (const event of ['typing:start', 'typing:stop']) {
     registerAcknowledgedEvent(socket, event, async (payload) => {
       const { conversationId } = parse(conversationPayload, payload)
-      await chatService.getConversation(conversationId, user)
-      socket.to(roomName(conversationId)).emit(event, {
+      await chatService.getConversation(conversationId, user, { requireParticipant: true })
+      socket.to(conversationRoom(conversationId)).emit('user:typing', {
         conversationId,
-        user: {
-          id: user._id,
-          displayName: user.displayName,
-          role: user.role?.toUpperCase(),
-        },
+        isTyping: event === 'typing:start',
+        user: { id: user._id, displayName: user.displayName, avatarUrl: user.avatarUrl, role: user.role?.toUpperCase() },
       })
       return { conversationId }
     })
@@ -144,9 +113,9 @@ export const initializeSocketServer = (httpServer) => {
   const io = new Server(httpServer, { cors: corsOptions })
   io.use(authenticateSocket)
   io.on('connection', async (socket) => {
-    if (socket.data.user?.role?.toUpperCase() === 'STAFF') {
-      await socket.join('staff:inbox')
-    }
+    const user = socket.data.user
+    await socket.join(userRoom(user._id))
+    if (user.role?.toUpperCase() === 'STAFF') await socket.join('staff:inbox')
     registerChatHandlers(io, socket)
   })
   return io

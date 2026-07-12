@@ -14,17 +14,6 @@ const messageHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
 })
 const markReadSchema = z.object({ messageId: uuid })
-const legacyListQuerySchema = z.object({
-  conversation_id: uuid.optional(),
-})
-const legacyCreateSchema = z.object({
-  conversation_id: uuid.optional(),
-  conversationId: uuid.optional(),
-  content: z.string().optional(),
-  message_content: z.string().optional(),
-  sender_type: z.string().optional(),
-  senderType: z.string().optional(),
-})
 
 export const chatValidation = {
   createConversationSchema,
@@ -32,6 +21,4 @@ export const chatValidation = {
   conversationParamsSchema,
   messageHistoryQuerySchema,
   markReadSchema,
-  legacyListQuerySchema,
-  legacyCreateSchema,
 }

@@ -1,38 +1,41 @@
-# Chat Socket.IO event contract
+# Chat flow and Socket.IO contract
 
-The default Socket.IO namespace uses the same server origin as the REST API.
-Clients authenticate with `auth: { token: accessToken }`. Only active
-`CUSTOMER` and `STAFF` accounts may connect.
+## Flow
 
-Every acknowledged client event returns one of:
+Conversation creation/listing, paginated message history, and read positions use
+the authenticated REST API. A customer has one support conversation. Staff see
+the shared support queue and are recorded in `conversation_participants` when
+they first join, load, read, or send in a conversation.
 
-- Success: `{ "ok": true, "data": { ... } }`
-- Failure: `{ "ok": false, "error": { "code": "...", "message": "..." } }`
+After login, Flutter opens one Socket.IO connection with
+`auth: { token: accessToken }`. The server validates the token, stores the user
+in `socket.data.user`, and joins `user:{userId}`. Opening a chat emits
+`conversation:join`; the server authorizes access before joining
+`conversation:{conversationId}`.
 
-## Client events
+Flutter sends `{ conversationId, content }` with `message:send`. The server
+trims and validates the content, verifies access, writes the message and
+conversation timestamp in one transaction, and only then emits `message:new`.
+Flutter merges that saved message by its database ID and does not reload history.
 
-| Event                | Client payload                                 | Successful data      | Notes                                                                            |
-| -------------------- | ---------------------------------------------- | -------------------- | -------------------------------------------------------------------------------- |
-| `conversation:join`  | `{ conversationId }`                           | `{ conversation }`   | Authorizes access, records staff participation, and joins the conversation room. |
-| `conversation:leave` | `{ conversationId }`                           | `{ conversationId }` | Leaves the room.                                                                 |
-| `message:send`       | `{ conversationId, clientMessageId, content }` | `{ message }`        | Persists idempotently and broadcasts `message:new`.                              |
-| `message:read`       | `{ conversationId, messageId }`                | `{ receipt }`        | Advances, but never moves backwards, the participant read position.              |
-| `typing:start`       | `{ conversationId }`                           | `{ conversationId }` | Broadcast only to other room members.                                            |
-| `typing:stop`        | `{ conversationId }`                           | `{ conversationId }` | Broadcast only to other room members.                                            |
+## Acknowledgements
 
-## Server events
+- Success: `{ "success": true, "data": { ... } }`
+- Failure: `{ "success": false, "message": "Safe error message" }`
 
-| Event                          | Payload                                               | Notes                                                                 |
-| ------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------- |
-| `message:new`                  | `{ message }`                                         | Sent to conversation members and the shared staff inbox.              |
-| `conversation:updated`         | `{ conversation }`                                    | Sent to staff so list previews remain current.                        |
-| `message:read`                 | `{ conversationId, userId, role, messageId, readAt }` | Updates unread and Seen state.                                        |
-| `typing:start` / `typing:stop` | `{ conversationId, user }`                            | Transient and not persisted.                                          |
-| `error`                        | `{ code, message, event?, conversationId? }`          | Used when a client event did not provide an acknowledgement callback. |
+## Events
 
-Connection failures are delivered through `connect_error`; structured details
-are available in `error.data`.
+| Direction | Event | Payload |
+| --- | --- | --- |
+| Client to server | `conversation:join` | `{ conversationId }` |
+| Client to server | `conversation:leave` | `{ conversationId }` |
+| Client to server | `message:send` | `{ conversationId, content }` |
+| Client to server | `typing:start` / `typing:stop` | `{ conversationId }` |
+| Server to client | `message:new` | `{ message }` |
+| Server to client | `message:error` | `{ success: false, message, event? }` |
+| Server to client | `user:typing` | `{ conversationId, isTyping, user }` |
+| Server to client | `conversation:updated` | `{ conversation }` |
 
-Error codes are `AUTH_REQUIRED`, `TOKEN_EXPIRED`, `INVALID_TOKEN`,
-`ROLE_FORBIDDEN`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`,
-`DISCONNECTED`, `TIMEOUT`, and `INTERNAL_ERROR`.
+The canonical message contains `id`, `conversationId`, `content`,
+`senderRole`, `sender { id, displayName, avatarUrl, role }`, and ISO-8601
+`createdAt`.

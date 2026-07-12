@@ -8,7 +8,6 @@ import { chatValidation } from '../../validations/chat.validation.js'
 const Router = express.Router()
 const protectedRoute = authMiddleware.protectedRoute
 const staffOrCustomer = authMiddleware.requireRoles('STAFF', 'CUSTOMER')
-const staffOnly = authMiddleware.requireRoles('STAFF')
 
 Router.use(protectedRoute, staffOrCustomer)
 
@@ -33,19 +32,6 @@ Router.patch(
   validate(chatValidation.conversationParamsSchema, 'params'),
   validate(chatValidation.markReadSchema),
   chatMessagesController.markRead
-)
-
-Router.get(
-  '/messages',
-  validate(chatValidation.legacyListQuerySchema, 'query'),
-  chatMessagesController.listChatMessages
-)
-Router.post('/messages', validate(chatValidation.legacyCreateSchema), chatMessagesController.createChatMessage)
-Router.delete(
-  '/messages/:id',
-  staffOnly,
-  validate(chatValidation.conversationParamsSchema, 'params'),
-  chatMessagesController.deleteChatMessage
 )
 
 export const chatRoute = Router
