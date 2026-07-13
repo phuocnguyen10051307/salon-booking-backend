@@ -3,7 +3,7 @@ import { StatusCodes } from 'http-status-codes'
 
 import { env } from '../config/environment.js'
 import { prisma } from '../config/prisma.js'
-import { pickUser } from '../utils/formatters.js'
+import { authService } from '../services/auth.service.js'
 
 // authorization - verify who the current user is
 export const protectedRoute = async (req, res, next) => {
@@ -26,20 +26,15 @@ export const protectedRoute = async (req, res, next) => {
       return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'User is not available' })
     }
 
-    const mapped = {
-      _id: user.user_id,
-      phone: user.phone,
-      displayName: user.full_name,
-      role: user.role || 'CUSTOMER',
-      avatarUrl: user.avatar_url,
-      avatarId: user.avatar_id,
-      isActive: user.is_active,
-    }
-
-    req.user = pickUser(mapped)
+    req.user = authService.mapUserResponse(user)
     next()
   } catch (error) {
-    if (['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name)) {
+    if (error.name === 'TokenExpiredError') {
+      console.error(error)
+      return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Access token expired' })
+    }
+
+    if (['JsonWebTokenError', 'NotBeforeError'].includes(error.name)) {
       console.error(error)
       return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Invalid access token' })
     }
@@ -49,6 +44,24 @@ export const protectedRoute = async (req, res, next) => {
   }
 }
 
+// Role guard used after protectedRoute has attached the current user.
+export const requireRoles = (...allowedRoles) => (req, res, next) => {
+  const currentRole = req.user?.role?.toUpperCase()
+  const normalizedAllowedRoles = allowedRoles.map((role) => role.toUpperCase())
+
+  if (!currentRole) {
+    return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'User role is missing' })
+  }
+
+  if (!normalizedAllowedRoles.includes(currentRole)) {
+    return res.status(StatusCodes.FORBIDDEN).json({ message: 'You do not have permission to access this resource' })
+  }
+
+  next()
+}
+
 export const authMiddleware = {
   protectedRoute,
+  requireRoles,
 }
+

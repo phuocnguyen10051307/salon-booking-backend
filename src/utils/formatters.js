@@ -4,5 +4,17 @@ import lodash from 'lodash'
 const { pick } = lodash
 export const pickUser = (user) => {
   if (!user) return {}
-  return pick(user, ['_id', 'phone', 'email', 'displayName', 'role', 'avatarUrl', 'avatarId', 'isActive'])
+  return pick(user, [
+    '_id',
+    'phone',
+    'email',
+    'displayName',
+    'role',
+    'avatarUrl',
+    'avatarId',
+    'loyaltyPoints',
+    'isActive',
+    'createdAt',
+    'updatedAt',
+  ])
 }
