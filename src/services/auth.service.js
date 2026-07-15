@@ -37,39 +37,68 @@ const mapUserResponse = (user) =>
     updatedAt: user.updated_at,
   })
 
+const buildDuplicateMessage = (users, phone, email) => {
+  const duplicatedFields = []
+  if (users.some((user) => user.phone === phone)) duplicatedFields.push('phone')
+  if (email && users.some((user) => user.email === email)) duplicatedFields.push('email')
+  return `${duplicatedFields.join(' and ')} already exists`
+}
+
 const signup = async (userData) => {
   const { phone, password, full_name, email } = userData
   if (!phone || !password || !full_name || !email) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'All fields are required')
   }
-  const duplicateChecks = [{ phone }]
-  if (email) duplicateChecks.push({ email })
 
+  const duplicateChecks = [{ phone }, { email }]
   const existedUsers = await prisma.users.findMany({ where: { OR: duplicateChecks } })
-  const duplicatedFields = []
-  if (existedUsers.some((user) => user.phone === phone)) duplicatedFields.push('phone')
-  if (email && existedUsers.some((user) => user.email === email)) duplicatedFields.push('email')
 
-  if (duplicatedFields.length) {
-    throw new ApiError(StatusCodes.CONFLICT, `${duplicatedFields.join(' and ')} already exists`)
+  const activeDuplicates = existedUsers.filter((user) => user.is_active)
+  if (activeDuplicates.length) {
+    throw new ApiError(StatusCodes.CONFLICT, buildDuplicateMessage(activeDuplicates, phone, email))
+  }
+
+  const inactiveDuplicates = existedUsers.filter((user) => !user.is_active)
+  const uniqueInactiveUserIds = [...new Set(inactiveDuplicates.map((user) => user.user_id))]
+  if (uniqueInactiveUserIds.length > 1) {
+    throw new ApiError(StatusCodes.CONFLICT, buildDuplicateMessage(inactiveDuplicates, phone, email))
   }
 
   const hashedPassword = await bcrypt.hash(password, 10)
   const { otp, otpHash, expiresAt } = await createOtpFields()
 
-  let createdUser
+  let savedUser
+  const pendingUser = inactiveDuplicates[0]
+
   try {
-    createdUser = await prisma.users.create({
-      data: {
-        phone,
-        email,
-        password_hash: hashedPassword,
-        full_name,
-        is_active: false,
-        email_verification_otp_hash: otpHash,
-        email_verification_otp_expires_at: expiresAt,
-      },
-    })
+    if (pendingUser) {
+      savedUser = await prisma.users.update({
+        where: { user_id: pendingUser.user_id },
+        data: {
+          phone,
+          email,
+          password_hash: hashedPassword,
+          full_name,
+          is_active: false,
+          email_verified_at: null,
+          email_verification_otp_hash: otpHash,
+          email_verification_otp_expires_at: expiresAt,
+          updated_at: new Date(),
+        },
+      })
+    } else {
+      savedUser = await prisma.users.create({
+        data: {
+          phone,
+          email,
+          password_hash: hashedPassword,
+          full_name,
+          is_active: false,
+          email_verification_otp_hash: otpHash,
+          email_verification_otp_expires_at: expiresAt,
+        },
+      })
+    }
   } catch (error) {
     if (error.code === 'P2002') {
       const target = error.meta?.target || []
@@ -82,11 +111,13 @@ const signup = async (userData) => {
   try {
     await emailService.sendVerificationOtp({ to: email, fullName: full_name, otp })
   } catch (error) {
-    await prisma.users.delete({ where: { user_id: createdUser.user_id } }).catch(() => {})
+    if (!pendingUser) {
+      await prisma.users.delete({ where: { user_id: savedUser.user_id } }).catch(() => {})
+    }
     throw error
   }
 
-  return mapUserResponse(createdUser)
+  return mapUserResponse(savedUser)
 }
 
 const verifySignupOtp = async ({ email, otp }) => {
