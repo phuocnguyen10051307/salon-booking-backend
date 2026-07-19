@@ -213,7 +213,7 @@ const confirmBookingTransferPayment = asyncHandler(async (req, res) => {
   const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
   const paymentMethod = assertStaffPaymentMethod(req.body.payment_method || req.body.paymentMethod || 'BANK_TRANSFER')
   const billing = await collectPayment(existing, paymentMethod)
-  ok(res, 'Xac nhan thanh toan chuyen khoan thanh cong', { billing })
+  ok(res, 'Staff da xac nhan da nhan tien chuyen khoan thanh cong', { billing })
 })
 
 const collectBillingPayment = asyncHandler(async (req, res) => {
@@ -286,3 +286,4 @@ export const billingsController = {
   confirmBookingTransferPayment,
   updateBillingStatus,
 }
+
