@@ -14,8 +14,8 @@ Router.post('/', protectedRoute, customerOnly, billingsController.createBilling)
 Router.get('/booking/:bookingId', protectedRoute, customerOnly, billingsController.getBillingByBooking)
 Router.get('/:id', protectedRoute, customerOnly, billingsController.getBilling)
 Router.patch('/booking/:bookingId/pay', protectedRoute, staffOrAdmin, billingsController.collectBookingPayment)
+Router.patch('/booking/:bookingId/pay/confirm', protectedRoute, staffOrAdmin, billingsController.confirmBookingTransferPayment)
 Router.patch('/:id/pay', protectedRoute, staffOrAdmin, billingsController.collectBillingPayment)
 Router.patch('/:id/status', protectedRoute, adminOnly, billingsController.updateBillingStatus)
 
 export const billingRoute = Router
-

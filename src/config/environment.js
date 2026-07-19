@@ -22,6 +22,13 @@ export const env = {
   SMTP_USER: process.env.SMTP_USER || 'phuocnghse184632@fpt.edu.vn',
   SMTP_PASS: process.env.SMTP_PASS,
   OTP_EXPIRES_IN_MINUTES: Number(process.env.OTP_EXPIRES_IN_MINUTES || 10),
+
+  BANK_QR_BANK_BIN: process.env.BANK_QR_BANK_BIN,
+  BANK_QR_BANK_NAME: process.env.BANK_QR_BANK_NAME,
+  BANK_QR_ACCOUNT_NUMBER: process.env.BANK_QR_ACCOUNT_NUMBER,
+  BANK_QR_ACCOUNT_NAME: process.env.BANK_QR_ACCOUNT_NAME,
+  BANK_QR_TEMPLATE: process.env.BANK_QR_TEMPLATE || 'compact2',
+
   // CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   // CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   // CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,

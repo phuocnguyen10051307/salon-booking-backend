@@ -29,6 +29,7 @@ export const billingInclude = {
   promotions: true,
   bookings: {
     include: {
+      users: true,
       stylists: true,
       booking_items: { include: { services: true } },
       service_reviews: { include: { services: true, users: true } },

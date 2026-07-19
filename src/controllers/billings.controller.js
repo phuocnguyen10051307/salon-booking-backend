@@ -2,12 +2,32 @@ import asyncHandler from 'express-async-handler'
 import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
+import { env } from '../config/environment.js'
 import ApiError from '../utils/ApiError.js'
 import { getPromotionId, resolvePromotionDiscount } from '../services/promotion.service.js'
 import { billingInclude, createBillingCode, getUserId, getUserRole, ok } from './helpers.js'
 import { stylistService } from '../services/stylist.service.js'
 
+const SUPPORTED_STAFF_PAYMENT_METHODS = new Set(['CASH', 'BANK_TRANSFER'])
+
 const normalizePaymentMethod = (value) => (value ? value.toUpperCase() : 'CASH')
+
+const assertStaffPaymentMethod = (value) => {
+  const paymentMethod = normalizePaymentMethod(value)
+  if (!SUPPORTED_STAFF_PAYMENT_METHODS.has(paymentMethod)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Only CASH and BANK_TRANSFER are supported in staff payment flow')
+  }
+  return paymentMethod
+}
+
+const ensureBankQrConfigured = () => {
+  if (!env.BANK_QR_BANK_BIN || !env.BANK_QR_ACCOUNT_NUMBER || !env.BANK_QR_ACCOUNT_NAME) {
+    throw new ApiError(
+      StatusCodes.BAD_REQUEST,
+      'Bank QR is not configured. Please set BANK_QR_BANK_BIN, BANK_QR_ACCOUNT_NUMBER, and BANK_QR_ACCOUNT_NAME',
+    )
+  }
+}
 
 const calculateSubtotal = (booking) => {
   if (booking.total_amount !== null && booking.total_amount !== undefined) return Number(booking.total_amount)
@@ -99,7 +119,7 @@ const findStaffOrAdminBilling = async (req, where) => {
   const role = getUserRole(req)
   const billing = await prisma.billings.findFirst({
     where,
-    include: { bookings: true },
+    include: billingInclude,
   })
   if (!billing) throw new ApiError(StatusCodes.NOT_FOUND, 'Billing not found')
 
@@ -138,17 +158,89 @@ const collectPayment = async (existing, paymentMethod) => {
   })
 }
 
+const prepareBillingForTransfer = async (existing) => {
+  if (existing.payment_method === 'BANK_TRANSFER') return existing
+
+  return prisma.billings.update({
+    where: { billing_id: existing.billing_id },
+    data: {
+      payment_method: 'BANK_TRANSFER',
+      updated_at: new Date(),
+    },
+    include: billingInclude,
+  })
+}
+
+const buildTransferContent = (billing) => `TT ${billing.billing_code}`
+
+const buildBankQrUrl = ({ bankBin, accountNumber, template, amount, transferContent, accountName }) => {
+  const encodedContent = encodeURIComponent(transferContent)
+  const encodedName = encodeURIComponent(accountName)
+  return `https://img.vietqr.io/image/${bankBin}-${accountNumber}-${template}.png?amount=${amount}&addInfo=${encodedContent}&accountName=${encodedName}`
+}
+
+const createTransferPaymentPayload = (billing) => {
+  ensureBankQrConfigured()
+
+  const amount = Math.max(Math.round(Number(billing.total_amount || 0)), 0)
+  const transferContent = buildTransferContent(billing)
+
+  return {
+    provider: 'BANK_QR',
+    bankBin: env.BANK_QR_BANK_BIN,
+    bankName: env.BANK_QR_BANK_NAME || 'Bank transfer',
+    accountName: env.BANK_QR_ACCOUNT_NAME,
+    accountNumber: env.BANK_QR_ACCOUNT_NUMBER,
+    amount,
+    transferContent,
+    qrCode: buildBankQrUrl({
+      bankBin: env.BANK_QR_BANK_BIN,
+      accountNumber: env.BANK_QR_ACCOUNT_NUMBER,
+      template: env.BANK_QR_TEMPLATE,
+      amount,
+      transferContent,
+      accountName: env.BANK_QR_ACCOUNT_NAME,
+    }),
+  }
+}
+
+const createTransferSession = async (existing) => {
+  const billing = await prepareBillingForTransfer(existing)
+  return { billing, payment: createTransferPaymentPayload(billing) }
+}
+
+const confirmBookingTransferPayment = asyncHandler(async (req, res) => {
+  const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
+  const paymentMethod = assertStaffPaymentMethod(req.body.payment_method || req.body.paymentMethod || 'BANK_TRANSFER')
+  const billing = await collectPayment(existing, paymentMethod)
+  ok(res, 'Xac nhan thanh toan chuyen khoan thanh cong', { billing })
+})
+
 const collectBillingPayment = asyncHandler(async (req, res) => {
   const existing = await findStaffOrAdminBilling(req, { billing_id: req.params.id })
-  const billing = await collectPayment(existing, req.body.payment_method || req.body.paymentMethod)
+  const paymentMethod = assertStaffPaymentMethod(req.body.payment_method || req.body.paymentMethod)
 
+  if (paymentMethod === 'BANK_TRANSFER') {
+    const result = await createTransferSession(existing)
+    ok(res, 'Tao QR chuyen khoan thanh cong', result)
+    return
+  }
+
+  const billing = await collectPayment(existing, paymentMethod)
   ok(res, 'Thu tien hoa don thanh cong', { billing })
 })
 
 const collectBookingPayment = asyncHandler(async (req, res) => {
   const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
-  const billing = await collectPayment(existing, req.body.payment_method || req.body.paymentMethod)
+  const paymentMethod = assertStaffPaymentMethod(req.body.payment_method || req.body.paymentMethod)
 
+  if (paymentMethod === 'BANK_TRANSFER') {
+    const result = await createTransferSession(existing)
+    ok(res, 'Tao QR chuyen khoan thanh cong', result)
+    return
+  }
+
+  const billing = await collectPayment(existing, paymentMethod)
   ok(res, 'Thu tien hoa don thanh cong', { billing })
 })
 
@@ -191,7 +283,6 @@ export const billingsController = {
   getBillingByBooking,
   collectBillingPayment,
   collectBookingPayment,
+  confirmBookingTransferPayment,
   updateBillingStatus,
 }
-
-
