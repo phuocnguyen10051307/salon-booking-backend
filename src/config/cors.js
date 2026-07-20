@@ -28,6 +28,7 @@ export const corsOptions = {
     }
 
     // Cuối cùng nếu domain không được chấp nhận thì trả về lỗi
+    console.warn(`[CORS] Rejected origin: ${origin}`)
     return callback(new ApiError(StatusCodes.FORBIDDEN, `${origin} not allowed by our CORS Policy.`))
   },
 

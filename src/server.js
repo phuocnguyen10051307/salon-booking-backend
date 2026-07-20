@@ -32,6 +32,10 @@ app.use(morgan('dev'))
 app.use(helmet())
 // Enable cookie parsing
 app.use(cookieParser())
+// Railway and external monitors can verify the HTTP process without authentication.
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' })
+})
 // Set up Swagger UI for API documentation
 const swaggerDocument = JSON.parse(fs.readFileSync('./src/swagger.json', 'utf-8'))
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument))
