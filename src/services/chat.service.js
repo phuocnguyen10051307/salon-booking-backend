@@ -1,7 +1,6 @@
 import { StatusCodes } from 'http-status-codes'
 
 import { prisma } from '../config/prisma.js'
-import { Prisma } from '../generated/prisma/client.js'
 import ApiError from '../utils/ApiError.js'
 
 export const CHAT_MESSAGE_MAX_LENGTH = 4000
@@ -106,38 +105,48 @@ const conversationInclude = {
 
 const unreadCounts = async (conversations, user) => {
   if (!conversations.length) return new Map()
+
   const userId = userIdOf(user)
-  const ids = conversations.map((conversation) => conversation.conversation_id)
-  const rows = await prisma.$queryRaw(Prisma.sql`
-    SELECT c.conversation_id AS id, COUNT(m.message_id)::int AS count
-    FROM conversations c
-    LEFT JOIN conversation_participants cp
-      ON cp.conversation_id = c.conversation_id AND cp.user_id = ${userId}::uuid
-    LEFT JOIN messages last_read ON last_read.message_id = cp.last_read_message_id
-    LEFT JOIN messages m
-      ON m.conversation_id = c.conversation_id
-      AND m.sender_id IS DISTINCT FROM ${userId}::uuid
-      AND (
-        last_read.message_id IS NULL
-        OR m.created_at > last_read.created_at
-        OR (m.created_at = last_read.created_at AND m.message_id > last_read.message_id)
-      )
-    WHERE c.conversation_id IN (${Prisma.join(ids)})
-    GROUP BY c.conversation_id
-  `)
-  return new Map(rows.map((row) => [row.id, Number(row.count)]))
+  const entries = await Promise.all(
+    conversations.map(async (conversation) => {
+      const participant = conversation.participants.find((item) => item.user_id === userId)
+      const lastReadMessage = participant?.last_read_message
+      const count = await prisma.messages.count({
+        where: {
+          conversation_id: conversation.conversation_id,
+          sender_id: { not: userId },
+          ...(lastReadMessage
+            ? {
+                OR: [
+                  { created_at: { gt: lastReadMessage.created_at } },
+                  {
+                    created_at: lastReadMessage.created_at,
+                    message_id: { gt: lastReadMessage.message_id },
+                  },
+                ],
+              }
+            : {}),
+        },
+      })
+
+      return [conversation.conversation_id, count]
+    })
+  )
+
+  return new Map(entries)
 }
 
 const mapConversation = (conversation, user, unreadCount = 0) => {
-  const customerRead = conversation.participants.find((item) => normalizeRole(item.user.role) === 'CUSTOMER')
+  const customer = mapUser(conversation.customer, 'CUSTOMER')
+  const customerRead = conversation.participants.find((item) => normalizeRole(item.user?.role) === 'CUSTOMER')
   const staffReads = conversation.participants
-    .filter((item) => normalizeRole(item.user.role) === 'STAFF' && item.last_read_at)
+    .filter((item) => normalizeRole(item.user?.role) === 'STAFF' && item.last_read_at)
     .map((item) => item.last_read_at)
 
   return {
     id: conversation.conversation_id,
-    customer: mapUser(conversation.customer, 'CUSTOMER'),
-    title: roleOf(user) === 'CUSTOMER' ? 'Salon Support' : conversation.customer.full_name,
+    customer,
+    title: roleOf(user) === 'CUSTOMER' ? 'Salon Support' : customer.displayName,
     lastMessage: conversation.messages[0] ? mapMessage(conversation.messages[0]) : null,
     unreadCount,
     lastActivityAt: conversation.updated_at,

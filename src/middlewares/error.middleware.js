@@ -6,6 +6,17 @@ export const errorHandlingMiddleware = (err, req, res, next) => {
   if (!err.statusCode) err.statusCode = StatusCodes.INTERNAL_SERVER_ERROR
 
   // Tạo ra một biến responseError để kiểm soát những gì muốn trả về
+
+  if (err.statusCode >= StatusCodes.INTERNAL_SERVER_ERROR) {
+    console.error('[API ERROR]', {
+      method: req.method,
+      path: req.originalUrl,
+      message: err.message,
+      code: err.code,
+      stack: err.stack,
+    })
+  }
+
   const responseError = {
     statusCode: err.statusCode,
     message: err.message || StatusCodes[err.statusCode], // Nếu lỗi mà không có message thì lấy ReasonPhrases chuẩn theo mã Status Code
