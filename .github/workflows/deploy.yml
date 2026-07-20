@@ -17,7 +17,6 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
-          script_stop: true
           script: |
             set -e
 
@@ -33,4 +32,13 @@ jobs:
             pm2 restart salon-booking-server --update-env
             pm2 save
 
-            curl -f http://127.0.0.1:3001/v1/status
+            for attempt in 1 2 3 4 5; do
+              if curl -f http://127.0.0.1:3000/v1/status; then
+                exit 0
+              fi
+
+              sleep 5
+            done
+
+            exit 1
+
