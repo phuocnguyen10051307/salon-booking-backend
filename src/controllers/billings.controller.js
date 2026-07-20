@@ -171,7 +171,11 @@ const prepareBillingForTransfer = async (existing) => {
   })
 }
 
-const buildTransferContent = (billing) => `TT ${billing.billing_code}`
+const buildTransferContent = (billing) => {
+  const promotionId = billing.promotions?.promotion_id
+  if (promotionId) return `KM ${promotionId}`
+  return `TT ${billing.billing_code}`
+}
 
 const buildBankQrUrl = ({ bankBin, accountNumber, template, amount, transferContent, accountName }) => {
   const encodedContent = encodeURIComponent(transferContent)
@@ -286,4 +290,5 @@ export const billingsController = {
   confirmBookingTransferPayment,
   updateBillingStatus,
 }
+
 
