@@ -45,15 +45,20 @@ const authenticationError = (code, message) => {
   return error
 }
 
+const rejectAuthentication = (next, code, message) => {
+  console.warn(`[Socket.IO] Authentication rejected code=${code}`)
+  return next(authenticationError(code, message))
+}
+
 const authenticateSocket = async (socket, next) => {
   try {
     const rawToken = socket.handshake.auth?.token
     const token = rawToken?.toString().replace(/^Bearer\s+/i, '')
-    if (!token) return next(authenticationError('AUTH_REQUIRED', 'Access token is required'))
+    if (!token) return rejectAuthentication(next, 'AUTH_REQUIRED', 'Access token is required')
 
     const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET)
     const user = await prisma.users.findUnique({ where: { user_id: decoded._id } })
-    if (!user?.is_active) return next(authenticationError('INVALID_TOKEN', 'User is not available'))
+    if (!user?.is_active) return rejectAuthentication(next, 'INVALID_TOKEN', 'User is not available')
 
     const mappedUser = authService.mapUserResponse(user)
     chatService.assertChatRole(mappedUser)
@@ -61,10 +66,14 @@ const authenticateSocket = async (socket, next) => {
     return next()
   } catch (error) {
     if (error.code === 'ROLE_FORBIDDEN') {
-      return next(authenticationError('ROLE_FORBIDDEN', error.message))
+      return rejectAuthentication(next, 'ROLE_FORBIDDEN', error.message)
     }
     const expired = error.name === 'TokenExpiredError'
-    return next(authenticationError(expired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN', expired ? 'Access token expired' : 'Invalid access token'))
+    return rejectAuthentication(
+      next,
+      expired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN',
+      expired ? 'Access token expired' : 'Invalid access token'
+    )
   }
 }
 
@@ -110,10 +119,26 @@ const registerChatHandlers = (io, socket) => {
 }
 
 export const initializeSocketServer = (httpServer) => {
-  const io = new Server(httpServer, { cors: corsOptions })
+  const io = new Server(httpServer, {
+    cors: corsOptions,
+    path: '/socket.io',
+    transports: ['websocket', 'polling'],
+  })
+  io.engine.on('connection_error', (error) => {
+    console.error('[Socket.IO] Engine connection error', {
+      code: error.code,
+      message: error.message,
+      transport: error.context?.transport?.name,
+      origin: error.req?.headers?.origin,
+    })
+  })
   io.use(authenticateSocket)
   io.on('connection', async (socket) => {
     const user = socket.data.user
+    console.log(`[Socket.IO] Connected socket=${socket.id} user=${user._id}`)
+    socket.on('disconnect', (reason) => {
+      console.log(`[Socket.IO] Disconnected socket=${socket.id} reason=${reason}`)
+    })
     await socket.join(userRoom(user._id))
     if (user.role?.toUpperCase() === 'STAFF') await socket.join('staff:inbox')
     registerChatHandlers(io, socket)

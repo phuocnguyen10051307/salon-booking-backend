@@ -3,8 +3,8 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 export const env = {
-  HOST: process.env.HOST,
-  PORT: process.env.PORT,
+  HOST: process.env.HOST || '0.0.0.0',
+  PORT: Number(process.env.PORT || 3000),
   BUILD_MODE: process.env.BUILD_MODE,
 
   // Database
