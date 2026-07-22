@@ -16,6 +16,7 @@ Router.get('/booking/:bookingId', protectedRoute, customerOnly, billingsControll
 Router.get('/:id', protectedRoute, customerOnly, billingsController.getBilling)
 Router.patch('/booking/:bookingId/pay', protectedRoute, staffOrAdmin, billingsController.collectBookingPayment)
 Router.patch('/booking/:bookingId/pay/confirm', protectedRoute, staffOrAdmin, billingsController.confirmBookingTransferPayment)
+Router.delete('/booking/:bookingId/pay', protectedRoute, staffOrAdmin, billingsController.cancelBookingTransferPayment)
 Router.patch('/:id/pay', protectedRoute, staffOrAdmin, billingsController.collectBillingPayment)
 Router.patch('/:id/status', protectedRoute, adminOnly, billingsController.updateBillingStatus)
 

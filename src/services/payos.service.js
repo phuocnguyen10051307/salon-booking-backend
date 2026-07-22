@@ -21,13 +21,13 @@ const requirePayOSConfig = () => {
   if (!env.PAYOS_CLIENT_ID || !env.PAYOS_API_KEY || !env.PAYOS_CHECKSUM_KEY) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
-      'PayOS is not configured. Please set PAYOS_CLIENT_ID, PAYOS_API_KEY, and PAYOS_CHECKSUM_KEY',
+      'PayOS chua duoc cau hinh. Vui long thiet lap PAYOS_CLIENT_ID, PAYOS_API_KEY va PAYOS_CHECKSUM_KEY',
     )
   }
   if (!env.PAYOS_RETURN_URL || !env.PAYOS_CANCEL_URL) {
     throw new ApiError(
       StatusCodes.BAD_REQUEST,
-      'PayOS return/cancel URL is not configured. Please set PAYOS_RETURN_URL and PAYOS_CANCEL_URL',
+      'Chua cau hinh URL return/cancel cua PayOS. Vui long thiet lap PAYOS_RETURN_URL va PAYOS_CANCEL_URL',
     )
   }
 }
@@ -75,7 +75,7 @@ const requestPayOS = async (path, options = {}) => {
     console.warn('[PayOS] Unexpected response payload', { path, payload })
   }
 
-  const message = payload?.desc || payload?.message || 'PayOS request failed'
+  const message = payload?.desc || payload?.message || 'Yeu cau PayOS that bai'
   throw new ApiError(response.status || StatusCodes.BAD_GATEWAY, message, payload?.code, payload)
 }
 
@@ -96,7 +96,7 @@ const buildOrderCode = (billing) => {
     .slice(0, 12)
 
   if (!digits) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Billing code is invalid for PayOS order code generation')
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Ma hoa don khong hop le de tao ma don hang PayOS')
   }
 
   return Number(digits)
@@ -144,10 +144,19 @@ const createPaymentLink = async (billing) => {
     }),
   }
 
-  return requestPayOS('/v2/payment-requests', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
+  try {
+    return await requestPayOS('/v2/payment-requests', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    const isExistsError = error?.code?.toString() === '231' || /da ton tai/i.test(error?.message || '')
+    if (!isExistsError) throw error
+
+    const existing = await getPaymentLink(billing)
+    if (existing) return existing
+    throw error
+  }
 }
 
 const getPaymentLink = async (billing) => {
@@ -155,9 +164,11 @@ const getPaymentLink = async (billing) => {
   return requestPayOS(`/v2/payment-requests/${orderCode}`)
 }
 
+const hasUsablePaymentLink = (paymentLink) => Boolean(paymentLink?.qrCode?.toString()?.trim() || paymentLink?.checkoutUrl?.toString()?.trim())
+
 const getOrCreatePaymentLink = async (billing) => {
   const existing = await getPaymentLink(billing)
-  if (existing) return existing
+  if (existing && hasUsablePaymentLink(existing)) return existing
   return createPaymentLink(billing)
 }
 

@@ -16,7 +16,7 @@ const normalizePaymentMethod = (value) => (value ? value.toUpperCase() : 'CASH')
 const assertStaffPaymentMethod = (value) => {
   const paymentMethod = normalizePaymentMethod(value)
   if (!SUPPORTED_STAFF_PAYMENT_METHODS.has(paymentMethod)) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Only CASH and BANK_TRANSFER are supported in staff payment flow')
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Chi ho tro CASH va BANK_TRANSFER trong quy trinh thanh toan cua nhan vien')
   }
   return paymentMethod
 }
@@ -34,7 +34,7 @@ const findUserBooking = async (bookingId, userId) => {
     where: { booking_id: bookingId, user_id: userId },
     include: { booking_items: true },
   })
-  if (!booking) throw new ApiError(StatusCodes.NOT_FOUND, 'Booking not found')
+  if (!booking) throw new ApiError(StatusCodes.NOT_FOUND, 'Khong tim thay lich hen')
   return booking
 }
 
@@ -77,32 +77,12 @@ const createPayOSPaymentPayload = (billing, paymentLink) => {
     diagnosticMessage:
       missingFields.length === 0
         ? ''
-        : `PayOS response is missing required fields: ${missingFields.join(', ')}`,
+        : `Phien thanh toan PayOS dang thieu du lieu: ${missingFields.join(', ')}`,
   }
 }
 
 const ensureUsablePayOSPayment = (billing, paymentLink, payment) => {
-  if (payment.isUsable) return payment
-
-  console.error('[PayOS] Incomplete payment session payload', {
-    billingId: billing.billing_id,
-    billingCode: billing.billing_code,
-    orderCode: payment.orderCode,
-    paymentLinkId: payment.paymentLinkId,
-    missingFields: payment.missingFields,
-    paymentLink,
-  })
-
-  throw new ApiError(
-    StatusCodes.BAD_GATEWAY,
-    'PayOS created an incomplete payment session. Missing checkout URL or QR data.',
-    'PAYOS_INCOMPLETE_SESSION',
-    {
-      billing_id: billing.billing_id,
-      paymentLinkId: payment.paymentLinkId,
-      missingFields: payment.missingFields,
-    },
-  )
+  return payment
 }
 
 const listBillings = asyncHandler(async (req, res) => {
@@ -117,7 +97,7 @@ const listBillings = asyncHandler(async (req, res) => {
 const createBilling = asyncHandler(async (req, res) => {
   const userId = getUserId(req)
   const bookingId = req.body.booking_id || req.body.bookingId
-  if (!bookingId) throw new ApiError(StatusCodes.BAD_REQUEST, 'Booking ID is required')
+  if (!bookingId) throw new ApiError(StatusCodes.BAD_REQUEST, 'Thieu ma lich hen')
 
   const existedBilling = await prisma.billings.findFirst({
     where: { booking_id: bookingId, user_id: userId },
@@ -280,24 +260,48 @@ const confirmBookingTransferPayment = asyncHandler(async (req, res) => {
   const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
   const paymentMethod = assertStaffPaymentMethod(req.body.payment_method || req.body.paymentMethod || 'BANK_TRANSFER')
   if (paymentMethod !== 'BANK_TRANSFER') {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'Manual transfer confirmation only supports BANK_TRANSFER payments')
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Chi ho tro xac nhan thu cong voi thanh toan BANK_TRANSFER')
   }
 
   if (normalizePaymentMethod(existing.payment_method) !== 'BANK_TRANSFER') {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'This billing is not waiting for BANK_TRANSFER confirmation')
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Hoa don nay khong o trang thai cho xac nhan BANK_TRANSFER')
   }
 
   const paymentLink = await payosService.getPaymentLink(existing)
   if (!paymentLink) {
-    throw new ApiError(StatusCodes.BAD_REQUEST, 'PayOS payment session has not been created for this billing')
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Hoa don nay chua tao phien thanh toan PayOS')
   }
 
   if (!payosService.isPaidStatus(paymentLink.status)) {
-    throw new ApiError(StatusCodes.CONFLICT, 'PayOS has not confirmed this transfer payment yet')
+    throw new ApiError(StatusCodes.CONFLICT, 'PayOS chua xac nhan giao dich chuyen khoan nay')
   }
 
   const billing = await collectPayment(existing, paymentMethod)
   ok(res, 'Staff da xac nhan da nhan tien chuyen khoan thanh cong', { billing })
+})
+
+const cancelBookingTransferPayment = asyncHandler(async (req, res) => {
+  const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
+
+  if (existing.status === 'PAID') {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Khong the huy phien thanh toan da hoan tat')
+  }
+
+  if (normalizePaymentMethod(existing.payment_method) !== 'BANK_TRANSFER') {
+    ok(res, 'Hoa don khong co phien BANK_TRANSFER dang cho', { billing: existing })
+    return
+  }
+
+  const billing = await prisma.billings.update({
+    where: { billing_id: existing.billing_id },
+    data: {
+      payment_method: null,
+      updated_at: new Date(),
+    },
+    include: billingInclude,
+  })
+
+  ok(res, 'Da huy phien thanh toan BANK_TRANSFER', { billing })
 })
 
 const collectBillingPayment = asyncHandler(async (req, res) => {
@@ -373,5 +377,7 @@ export const billingsController = {
   collectBillingPayment,
   collectBookingPayment,
   confirmBookingTransferPayment,
+  cancelBookingTransferPayment,
   updateBillingStatus,
 }
+
