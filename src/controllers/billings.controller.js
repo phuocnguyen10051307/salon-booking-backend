@@ -5,6 +5,7 @@ import { prisma } from '../config/prisma.js'
 import { env } from '../config/environment.js'
 import ApiError from '../utils/ApiError.js'
 import { getPromotionId, resolvePromotionDiscount } from '../services/promotion.service.js'
+import { payosService } from '../services/payos.service.js'
 import { billingInclude, createBillingCode, getUserId, getUserRole, ok } from './helpers.js'
 import { stylistService } from '../services/stylist.service.js'
 
@@ -18,15 +19,6 @@ const assertStaffPaymentMethod = (value) => {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Only CASH and BANK_TRANSFER are supported in staff payment flow')
   }
   return paymentMethod
-}
-
-const ensureBankQrConfigured = () => {
-  if (!env.BANK_QR_BANK_BIN || !env.BANK_QR_ACCOUNT_NUMBER || !env.BANK_QR_ACCOUNT_NAME) {
-    throw new ApiError(
-      StatusCodes.BAD_REQUEST,
-      'Bank QR is not configured. Please set BANK_QR_BANK_BIN, BANK_QR_ACCOUNT_NUMBER, and BANK_QR_ACCOUNT_NAME',
-    )
-  }
 }
 
 const calculateSubtotal = (booking) => {
@@ -44,6 +36,73 @@ const findUserBooking = async (bookingId, userId) => {
   })
   if (!booking) throw new ApiError(StatusCodes.NOT_FOUND, 'Booking not found')
   return booking
+}
+
+const buildPayOSCheckoutUrl = (paymentLinkId) =>
+  paymentLinkId ? `https://pay.payos.vn/web/${paymentLinkId}` : ''
+
+const collectMissingPaymentFields = (payment) => {
+  const missing = []
+  if (!payment.checkoutUrl) missing.push('checkoutUrl')
+  if (!payment.qrCode) missing.push('qrCode')
+  if (!payment.orderCode) missing.push('orderCode')
+  if (!payment.amount || payment.amount <= 0) missing.push('amount')
+  return missing
+}
+
+const createPayOSPaymentPayload = (billing, paymentLink) => {
+  const paymentLinkId = paymentLink?.paymentLinkId?.toString() || paymentLink?.id?.toString() || ''
+  const checkoutUrl = paymentLink?.checkoutUrl?.toString() || buildPayOSCheckoutUrl(paymentLinkId)
+
+  const payment = {
+    provider: 'PAYOS',
+    bankBin: paymentLink?.bin?.toString() || env.BANK_QR_BANK_BIN || '',
+    bankName: paymentLink?.bin?.toString() ? 'PayOS' : env.BANK_QR_BANK_NAME || 'PayOS',
+    qrCode: paymentLink?.qrCode?.toString() || '',
+    accountName: paymentLink?.accountName?.toString() || env.BANK_QR_ACCOUNT_NAME || '',
+    accountNumber: paymentLink?.accountNumber?.toString() || env.BANK_QR_ACCOUNT_NUMBER || '',
+    amount: Number(paymentLink?.amount ?? billing.total_amount ?? 0),
+    transferContent: paymentLink?.description?.toString() || `TT ${billing.billing_code}`,
+    checkoutUrl,
+    orderCode: paymentLink?.orderCode?.toString() || payosService.buildOrderCode(billing).toString(),
+    paymentLinkId,
+    status: paymentLink?.status?.toString() || (billing.status === 'PAID' ? 'PAID' : 'PENDING'),
+  }
+
+  const missingFields = collectMissingPaymentFields(payment)
+  return {
+    ...payment,
+    missingFields,
+    isUsable: missingFields.length === 0,
+    diagnosticMessage:
+      missingFields.length === 0
+        ? ''
+        : `PayOS response is missing required fields: ${missingFields.join(', ')}`,
+  }
+}
+
+const ensureUsablePayOSPayment = (billing, paymentLink, payment) => {
+  if (payment.isUsable) return payment
+
+  console.error('[PayOS] Incomplete payment session payload', {
+    billingId: billing.billing_id,
+    billingCode: billing.billing_code,
+    orderCode: payment.orderCode,
+    paymentLinkId: payment.paymentLinkId,
+    missingFields: payment.missingFields,
+    paymentLink,
+  })
+
+  throw new ApiError(
+    StatusCodes.BAD_GATEWAY,
+    'PayOS created an incomplete payment session. Missing checkout URL or QR data.',
+    'PAYOS_INCOMPLETE_SESSION',
+    {
+      billing_id: billing.billing_id,
+      paymentLinkId: payment.paymentLinkId,
+      missingFields: payment.missingFields,
+    },
+  )
 }
 
 const listBillings = asyncHandler(async (req, res) => {
@@ -171,51 +230,72 @@ const prepareBillingForTransfer = async (existing) => {
   })
 }
 
-const buildTransferContent = (billing) => {
-  const promotionId = billing.promotions?.promotion_id
-  if (promotionId) return `KM ${promotionId}`
-  return `TT ${billing.billing_code}`
-}
-
-const buildBankQrUrl = ({ bankBin, accountNumber, template, amount, transferContent, accountName }) => {
-  const encodedContent = encodeURIComponent(transferContent)
-  const encodedName = encodeURIComponent(accountName)
-  return `https://img.vietqr.io/image/${bankBin}-${accountNumber}-${template}.png?amount=${amount}&addInfo=${encodedContent}&accountName=${encodedName}`
-}
-
-const createTransferPaymentPayload = (billing) => {
-  ensureBankQrConfigured()
-
-  const amount = Math.max(Math.round(Number(billing.total_amount || 0)), 0)
-  const transferContent = buildTransferContent(billing)
-
-  return {
-    provider: 'BANK_QR',
-    bankBin: env.BANK_QR_BANK_BIN,
-    bankName: env.BANK_QR_BANK_NAME || 'Bank transfer',
-    accountName: env.BANK_QR_ACCOUNT_NAME,
-    accountNumber: env.BANK_QR_ACCOUNT_NUMBER,
-    amount,
-    transferContent,
-    qrCode: buildBankQrUrl({
-      bankBin: env.BANK_QR_BANK_BIN,
-      accountNumber: env.BANK_QR_ACCOUNT_NUMBER,
-      template: env.BANK_QR_TEMPLATE,
-      amount,
-      transferContent,
-      accountName: env.BANK_QR_ACCOUNT_NAME,
-    }),
-  }
-}
-
 const createTransferSession = async (existing) => {
   const billing = await prepareBillingForTransfer(existing)
-  return { billing, payment: createTransferPaymentPayload(billing) }
+  const paymentLink = await payosService.getOrCreatePaymentLink(billing)
+
+  if (payosService.isPaidStatus(paymentLink?.status) && billing.status !== 'PAID') {
+    const paidBilling = await collectPayment(billing, 'BANK_TRANSFER')
+    const payment = createPayOSPaymentPayload(paidBilling, paymentLink)
+    return { billing: paidBilling, payment: ensureUsablePayOSPayment(paidBilling, paymentLink, payment) }
+  }
+
+  const payment = createPayOSPaymentPayload(billing, paymentLink)
+  return { billing, payment: ensureUsablePayOSPayment(billing, paymentLink, payment) }
 }
+
+const getBookingPaymentStatus = asyncHandler(async (req, res) => {
+  const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
+
+  if (existing.status === 'PAID') {
+    ok(res, 'Lay trang thai thanh toan thanh cong', { billing: existing })
+    return
+  }
+
+  if (normalizePaymentMethod(existing.payment_method) !== 'BANK_TRANSFER') {
+    ok(res, 'Lay trang thai thanh toan thanh cong', { billing: existing })
+    return
+  }
+
+  const paymentLink = await payosService.getOrCreatePaymentLink(existing)
+
+  if (payosService.isPaidStatus(paymentLink.status)) {
+    const billing = await collectPayment(existing, 'BANK_TRANSFER')
+    const payment = createPayOSPaymentPayload(billing, paymentLink)
+    ok(res, 'Thanh toan PayOS da hoan tat', {
+      billing,
+      payment: ensureUsablePayOSPayment(billing, paymentLink, payment),
+    })
+    return
+  }
+
+  const payment = createPayOSPaymentPayload(existing, paymentLink)
+  ok(res, 'Lay trang thai thanh toan thanh cong', {
+    billing: existing,
+    payment: ensureUsablePayOSPayment(existing, paymentLink, payment),
+  })
+})
 
 const confirmBookingTransferPayment = asyncHandler(async (req, res) => {
   const existing = await findStaffOrAdminBilling(req, { booking_id: req.params.bookingId })
   const paymentMethod = assertStaffPaymentMethod(req.body.payment_method || req.body.paymentMethod || 'BANK_TRANSFER')
+  if (paymentMethod !== 'BANK_TRANSFER') {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Manual transfer confirmation only supports BANK_TRANSFER payments')
+  }
+
+  if (normalizePaymentMethod(existing.payment_method) !== 'BANK_TRANSFER') {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'This billing is not waiting for BANK_TRANSFER confirmation')
+  }
+
+  const paymentLink = await payosService.getPaymentLink(existing)
+  if (!paymentLink) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'PayOS payment session has not been created for this billing')
+  }
+
+  if (!payosService.isPaidStatus(paymentLink.status)) {
+    throw new ApiError(StatusCodes.CONFLICT, 'PayOS has not confirmed this transfer payment yet')
+  }
+
   const billing = await collectPayment(existing, paymentMethod)
   ok(res, 'Staff da xac nhan da nhan tien chuyen khoan thanh cong', { billing })
 })
@@ -226,7 +306,7 @@ const collectBillingPayment = asyncHandler(async (req, res) => {
 
   if (paymentMethod === 'BANK_TRANSFER') {
     const result = await createTransferSession(existing)
-    ok(res, 'Tao QR chuyen khoan thanh cong', result)
+    ok(res, 'Tao QR PayOS thanh cong', result)
     return
   }
 
@@ -240,7 +320,7 @@ const collectBookingPayment = asyncHandler(async (req, res) => {
 
   if (paymentMethod === 'BANK_TRANSFER') {
     const result = await createTransferSession(existing)
-    ok(res, 'Tao QR chuyen khoan thanh cong', result)
+    ok(res, 'Tao QR PayOS thanh cong', result)
     return
   }
 
@@ -280,15 +360,18 @@ const updateBillingStatus = asyncHandler(async (req, res) => {
   ok(res, 'Cap nhat trang thai hoa don thanh cong', { billing })
 })
 
+export const billingsControllerInternals = {
+  collectMissingPaymentFields,
+}
+
 export const billingsController = {
   listBillings,
   createBilling,
   getBilling,
   getBillingByBooking,
+  getBookingPaymentStatus,
   collectBillingPayment,
   collectBookingPayment,
   confirmBookingTransferPayment,
   updateBillingStatus,
 }
-
-

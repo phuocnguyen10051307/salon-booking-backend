@@ -36,6 +36,12 @@ const getRequestedBookingDate = (value) => {
   return parseDate(value)
 }
 
+const buildStaffBookingsWhere = ({ stylistId, bookingDate }) => ({
+  stylist_id: stylistId,
+  booking_date: bookingDate,
+  status: { not: 'CANCELLED' },
+})
+
 const requireScheduleInput = (body) => {
   const bookingDateInput = body.booking_date || body.bookingDate
   const bookingTimeInput = body.booking_time || body.bookingTime
@@ -259,11 +265,7 @@ const listStaffTodayBookings = asyncHandler(async (req, res) => {
   if (!stylistId) return ok(res, 'Lay lich lam hom nay thanh cong', { bookings: [] })
 
   const bookings = await prisma.bookings.findMany({
-    where: {
-      stylist_id: stylistId,
-      booking_date: bookingDate,
-      status: { in: ['PENDING', 'CONFIRMED'] },
-    },
+    where: buildStaffBookingsWhere({ stylistId, bookingDate }),
     include: bookingInclude,
     orderBy: { booking_time: 'asc' },
   })
@@ -346,5 +348,10 @@ export const bookingsController = {
   cancelBooking,
   rescheduleBooking,
   getBookingReschedules,
+}
+
+export const bookingsControllerInternals = {
+  buildStaffBookingsWhere,
+  getRequestedBookingDate,
 }
 

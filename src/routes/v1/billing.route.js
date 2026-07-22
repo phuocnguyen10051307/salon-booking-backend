@@ -11,6 +11,7 @@ const staffOrAdmin = authMiddleware.requireRoles('STAFF', 'ADMIN')
 
 Router.get('/', protectedRoute, customerOnly, billingsController.listBillings)
 Router.post('/', protectedRoute, customerOnly, billingsController.createBilling)
+Router.get('/booking/:bookingId/payment-status', protectedRoute, staffOrAdmin, billingsController.getBookingPaymentStatus)
 Router.get('/booking/:bookingId', protectedRoute, customerOnly, billingsController.getBillingByBooking)
 Router.get('/:id', protectedRoute, customerOnly, billingsController.getBilling)
 Router.patch('/booking/:bookingId/pay', protectedRoute, staffOrAdmin, billingsController.collectBookingPayment)
