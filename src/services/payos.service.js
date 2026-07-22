@@ -1,10 +1,12 @@
-import crypto from 'crypto'
+﻿import crypto from 'crypto'
 import { StatusCodes } from 'http-status-codes'
 
 import { env } from '../config/environment.js'
 import ApiError from '../utils/ApiError.js'
 
 const PAYOS_BASE_URL = 'https://api-merchant.payos.vn'
+const ORDER_CODE_MIN = 100000000000n
+const ORDER_CODE_RANGE = 900000000000n
 
 const PAYOS_SUCCESS_CODES = new Set(['00'])
 const PAYOS_PAID_STATUSES = new Set(['PAID'])
@@ -90,16 +92,25 @@ const sanitizeDescription = (value) => {
   return normalized.slice(0, 25) || 'Thanh toan don hang'
 }
 
-const buildOrderCode = (billing) => {
-  const digits = String(billing.billing_code || '')
-    .replace(/\D/g, '')
-    .slice(0, 12)
+const toOrderCodeSeed = (billing) => {
+  const billingCode = String(billing?.billing_code || '')
+  const sessionMarker = billing?.updated_at || billing?.created_at || ''
+  const billingId = String(billing?.billing_id || '')
 
-  if (!digits) {
+  if (!billingCode.trim()) {
     throw new ApiError(StatusCodes.BAD_REQUEST, 'Ma hoa don khong hop le de tao ma don hang PayOS')
   }
 
-  return Number(digits)
+  return `${billingCode}|${sessionMarker ? new Date(sessionMarker).toISOString() : ''}|${billingId}`
+}
+
+const buildOrderCode = (billing) => {
+  const seed = toOrderCodeSeed(billing)
+  const digest = crypto.createHash('sha256').update(seed).digest('hex')
+  const numeric = BigInt(`0x${digest}`)
+  const orderCode = ORDER_CODE_MIN + (numeric % ORDER_CODE_RANGE)
+
+  return Number(orderCode.toString())
 }
 
 const buildItemName = (billing) => {

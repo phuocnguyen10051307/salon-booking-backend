@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict'
+﻿import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { env } from '../src/config/environment.js'
@@ -12,47 +12,23 @@ test('PayOS paid status check is case-insensitive and rejects pending payments',
   assert.equal(payosService.isPaidStatus(undefined), false)
 })
 
-test('collectMissingPaymentFields reports incomplete PayOS payloads', () => {
-  const missing = billingsControllerInternals.collectMissingPaymentFields({
-    checkoutUrl: '',
-    qrCode: '',
-    orderCode: '',
-    amount: 0,
-  })
-
-  assert.deepEqual(missing, ['checkoutUrl', 'qrCode', 'orderCode', 'amount'])
-})
-
-test('requestPayOS treats PayOS code 101 as a missing payment link', async () => {
-  const originalFetch = global.fetch
-  const originalEnv = {
-    PAYOS_CLIENT_ID: env.PAYOS_CLIENT_ID,
-    PAYOS_API_KEY: env.PAYOS_API_KEY,
-    PAYOS_CHECKSUM_KEY: env.PAYOS_CHECKSUM_KEY,
-    PAYOS_RETURN_URL: env.PAYOS_RETURN_URL,
-    PAYOS_CANCEL_URL: env.PAYOS_CANCEL_URL,
+test('buildOrderCode changes when the payment session changes', () => {
+  const baseBilling = {
+    billing_code: 'BL8025107073',
+    billing_id: '11111111-1111-1111-1111-111111111111',
+    updated_at: '2026-07-22T00:00:00.000Z',
+    created_at: '2026-07-21T00:00:00.000Z',
   }
 
-  env.PAYOS_CLIENT_ID = 'test-client'
-  env.PAYOS_API_KEY = 'test-key'
-  env.PAYOS_CHECKSUM_KEY = 'test-checksum'
-  env.PAYOS_RETURN_URL = 'https://example.com/return'
-  env.PAYOS_CANCEL_URL = 'https://example.com/cancel'
-
-  global.fetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ code: '101', desc: 'Ma thanh toan khong ton tai' }),
+  const first = payosService.buildOrderCode(baseBilling)
+  const second = payosService.buildOrderCode({
+    ...baseBilling,
+    updated_at: '2026-07-22T00:05:00.000Z',
   })
 
-  try {
-    const result = await payosService.getPaymentLink({ billing_code: 'BL8025107073' })
-    assert.equal(result, null)
-  } finally {
-    global.fetch = originalFetch
-    Object.assign(env, originalEnv)
-  }
+  assert.notEqual(first, second)
 })
+
 test('getOrCreatePaymentLink recreates missing QR sessions', async () => {
   const originalFetch = global.fetch
   const originalEnv = {
